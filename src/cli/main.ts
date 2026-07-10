@@ -22,8 +22,9 @@ Commands:
            print a stats report to the terminal (or write self-contained HTML with --html)
   ingest   [--session <path>] [--all]
            incrementally collect raw Claude Code / Opencode sessions into the local store
-  rebuild
-           fully rebuild the store from raw session data
+  rebuild  [--tool cc|opencode|all]
+           wipe the local store (runs/turns/toolcalls/cursors) and fully re-ingest
+           all raw Claude Code / Opencode session data from scratch
   install  [--claude-code | --opencode | --all] [--dry-run]
            prepare live-trigger integration (Claude Code skill+hooks / Opencode plugin);
            no flag = --all; prints the ~/.claude/settings.json hooks snippet to add by hand
