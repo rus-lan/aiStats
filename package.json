@@ -13,6 +13,7 @@
   "files": [
     "dist",
     "bin",
+    "src/integration",
     "package.json"
   ],
   "scripts": {

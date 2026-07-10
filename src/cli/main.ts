@@ -24,8 +24,9 @@ Commands:
            incrementally collect raw Claude Code / Opencode sessions into the local store
   rebuild
            fully rebuild the store from raw session data
-  install  [--claude-code | --opencode]
-           prepare live-trigger integration (Claude Code hooks / Opencode plugin)
+  install  [--claude-code | --opencode | --all] [--dry-run]
+           prepare live-trigger integration (Claude Code skill+hooks / Opencode plugin);
+           no flag = --all; prints the ~/.claude/settings.json hooks snippet to add by hand
 
 Global flags:
   -h, --help      show this help and exit
