@@ -202,6 +202,10 @@ a { color: inherit; }
 .meter { margin-top: 9px; height: 6px; border-radius: 4px; background: var(--track, var(--grid)); overflow: hidden; }
 .meter > span { display: block; height: 100%; border-radius: 4px; background: var(--data-a); }
 
+.narrative { background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--data-a); border-radius: 12px; padding: 15px 18px; margin-bottom: 14px; }
+.narrative .label { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.narrative p { margin: 0; color: var(--text); font-size: 14.5px; line-height: 1.55; white-space: pre-line; }
+
 .recs { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .rec { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--sev); border-radius: 12px; padding: 15px 18px; box-shadow: var(--shadow); }
 .rec .top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }

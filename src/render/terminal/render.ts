@@ -374,8 +374,37 @@ function renderRecommendationBlock(rec: Recommendation, index: number): string[]
   return lines;
 }
 
+/** Wraps `text` to at most `width` columns on whitespace — no hyphenation, no ANSI-awareness (the narrative is always plain, uncolored prose). */
+function wrapText(text: string, width: number): string[] {
+  const words = text.split(/\s+/).filter((word) => word.length > 0);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const candidate = current.length === 0 ? word : `${current} ${word}`;
+    if (candidate.length > width && current.length > 0) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) lines.push(current);
+  return lines;
+}
+
+const SUMMARY_INDENT = '   ';
+
+/** `--llm-narrative` (DESIGN §15): a wrapped "SUMMARY" sub-block above the ranked recommendations — rendered only when the LLM call succeeded (`report.narrative` set); the ranked list below always shows regardless. */
+function renderSummary(narrative: string): string[] {
+  const lines = [bold('SUMMARY')];
+  for (const line of wrapText(narrative, WIDTH - SUMMARY_INDENT.length)) lines.push(`${SUMMARY_INDENT}${line}`);
+  lines.push('');
+  return lines;
+}
+
 function renderRecommendations(report: Report, full: boolean): string[] {
   const lines = sectionTitle('Recommendations');
+  if (report.narrative !== undefined && report.narrative.length > 0) lines.push(...renderSummary(report.narrative));
   if (report.recommendations.length === 0) {
     lines.push(dim('no efficiency flags — metrics look healthy'));
     return lines;

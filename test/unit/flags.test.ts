@@ -30,3 +30,15 @@ void test('parseScopeFlags parses --pretty (default false)', () => {
   assert.equal(parseScopeFlags([]).pretty, false);
   assert.equal(parseScopeFlags(['--pretty']).pretty, true);
 });
+
+void test('parseScopeFlags parses --llm-narrative / --llm-phases / --llm-phases-max (DESIGN §15)', () => {
+  const bare = parseScopeFlags([]);
+  assert.equal(bare.llmNarrative, false);
+  assert.equal(bare.llmPhases, false);
+  assert.equal(bare.llmPhasesMax, undefined);
+
+  const flagged = parseScopeFlags(['--llm-narrative', '--llm-phases', '--llm-phases-max', '20']);
+  assert.equal(flagged.llmNarrative, true);
+  assert.equal(flagged.llmPhases, true);
+  assert.equal(flagged.llmPhasesMax, 20);
+});

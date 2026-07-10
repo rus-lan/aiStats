@@ -176,12 +176,18 @@ function renderRecommendation(rec: Recommendation, index: number): string {
   </div>`;
 }
 
+/** `--llm-narrative` (DESIGN §15) styled callout — rendered only when the LLM call succeeded (`report.narrative` set); the ranked recommendations below always render regardless. */
+function renderNarrative(narrative: string): string {
+  return `<div class="narrative"><div class="label">Summary</div><p>${esc(narrative)}</p></div>`;
+}
+
 function renderRecommendations(report: Report): string {
+  const narrative = report.narrative !== undefined && report.narrative.length > 0 ? renderNarrative(report.narrative) : '';
   if (report.recommendations.length === 0) {
-    return `<section class="section"><h2>Recommendations</h2><div class="card"><p class="empty">No efficiency flags — metrics look healthy.</p></div></section>`;
+    return `<section class="section"><h2>Recommendations</h2>${narrative}<div class="card"><p class="empty">No efficiency flags — metrics look healthy.</p></div></section>`;
   }
   const cards = report.recommendations.map((rec, i) => renderRecommendation(rec, i)).join('');
-  return `<section class="section"><h2>Recommendations</h2><div class="recs">${cards}</div></section>`;
+  return `<section class="section"><h2>Recommendations</h2>${narrative}<div class="recs">${cards}</div></section>`;
 }
 
 // --- timeline + activity calendar -----------------------------------------------------------------

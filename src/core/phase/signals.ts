@@ -28,7 +28,8 @@ export const SPAWN_TOOLS = new Set(['Agent', 'Task', 'TodoWrite', 'task', 'todow
 
 const CONTEXT7_PATTERN = /context7/i;
 
-function isWebToolName(name: string): boolean {
+/** Exported for `core/llm/phases.ts` — the `--llm-phases` block-description builder needs the same web-tool-name test the phase engine uses, from stored toolcall names alone (no `AdapterTurn.webRequests` counter survives to the store). */
+export function isWebToolName(name: string): boolean {
   return WEB_TOOLS.has(name) || CONTEXT7_PATTERN.test(name);
 }
 

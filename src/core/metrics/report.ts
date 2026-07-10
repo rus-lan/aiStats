@@ -113,4 +113,6 @@ export interface Report {
   ratios: Ratios;
   timeline: DayBucket[];
   recommendations: Recommendation[];
+  /** `--llm-narrative` (DESIGN §15, opt-in): a short LLM-written prose summary layered on top of the deterministic `recommendations` — unset unless the flag was passed and the call succeeded. */
+  narrative?: string;
 }

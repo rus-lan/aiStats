@@ -23,6 +23,12 @@ export interface ScopeFlags {
   redact: boolean;
   /** `--pretty` (used by `export`): 2-space-indented JSON instead of minified. */
   pretty: boolean;
+  /** `--llm-narrative` (used by `report`, DESIGN §15): layer a short LLM-written prose summary on top of the deterministic recommendations. */
+  llmNarrative: boolean;
+  /** `--llm-phases` (used by `report`, DESIGN §15): opt-in LLM overlay that re-labels weak/ambiguous phase blocks for this report only — never rewrites the stored phases. */
+  llmPhases: boolean;
+  /** `--llm-phases-max <n>` (used by `report`): caps how many ambiguous blocks `--llm-phases` sends to the LLM. */
+  llmPhasesMax?: number;
 }
 
 function isToolFilter(value: string): value is ToolFilter {
@@ -31,9 +37,10 @@ function isToolFilter(value: string): value is ToolFilter {
 
 /**
  * Parses the `--project/--global --tool --days --since --until --full --json --html --out
- * --redact --pretty` flag set shared by report-like commands (`report`, `export`). Throws a
- * plain `Error` with a clear message on an invalid `--tool` or a malformed `--since`/`--until`
- * date — callers are expected to catch it and exit 2.
+ * --redact --pretty --llm-narrative --llm-phases --llm-phases-max` flag set shared by
+ * report-like commands (`report`, `export`) — the `--llm-*` flags are only read by `report`.
+ * Throws a plain `Error` with a clear message on an invalid `--tool` or a malformed
+ * `--since`/`--until` date — callers are expected to catch it and exit 2.
  */
 export function parseScopeFlags(argv: string[]): ScopeFlags {
   const { values, positionals } = parseArgs({
@@ -51,6 +58,9 @@ export function parseScopeFlags(argv: string[]): ScopeFlags {
       out: { type: 'string' },
       redact: { type: 'boolean', default: false },
       pretty: { type: 'boolean', default: false },
+      'llm-narrative': { type: 'boolean', default: false },
+      'llm-phases': { type: 'boolean', default: false },
+      'llm-phases-max': { type: 'string' },
     },
     allowPositionals: true,
     strict: false,
@@ -69,12 +79,15 @@ export function parseScopeFlags(argv: string[]): ScopeFlags {
     html: Boolean(values.html),
     redact: Boolean(values.redact),
     pretty: Boolean(values.pretty),
+    llmNarrative: Boolean(values['llm-narrative']),
+    llmPhases: Boolean(values['llm-phases']),
   };
   if (typeof values.project === 'string') scope.project = values.project;
   if (typeof values.days === 'string') scope.days = Number(values.days);
   if (typeof values.since === 'string') scope.sinceMs = parseDateBoundary(values.since, 'start');
   if (typeof values.until === 'string') scope.untilMs = parseDateBoundary(values.until, 'end');
   if (typeof values.out === 'string') scope.out = values.out;
+  if (typeof values['llm-phases-max'] === 'string') scope.llmPhasesMax = Number(values['llm-phases-max']);
 
   const firstPositional = positionals[0];
   if (typeof firstPositional === 'string' && firstPositional.length > 0) scope.htmlPath = firstPositional;

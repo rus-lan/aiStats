@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import type { LoadFilter, Store } from '../store/store.js';
+import type { LoadFilter, LoadedData, Store } from '../store/store.js';
 import { projectKey as resolveProjectKey } from '../util/git.js';
 import { byActor, byDay, byModel, byPhase, byProject, byTool, computeActiveDurations, costForTurns, sumDurationMs, sumTokens, sumWallMs } from './slices.js';
 import { computeCounts, computeRatios } from './ratios.js';
@@ -27,17 +27,19 @@ export interface BuildReportOptions {
   now?: number;
 }
 
-/**
- * Builds the single Report model both renderers (P4 terminal, P7 HTML) consume. Resolves scope
- * (global vs one project, via `git.ts`'s `projectKey()`; tool filter; `--days` window) into a
- * `Store.load()` filter, then runs the pure slice/ratio math over whatever comes back.
- * `byProject` is always computed from the loaded runs — in project scope `store.load()` already
- * narrowed those runs to one `projectKey`, so it naturally collapses to a single entry there and
- * only fans out to many in global scope.
- */
-export async function buildReport(store: Store, options: BuildReportOptions): Promise<Report> {
-  const generatedAtMs = options.now ?? Date.now();
+export interface ResolvedReportScope {
+  scope: ReportScope;
+  filter: LoadFilter;
+}
 
+/**
+ * Resolves `options` (global vs one project, via `git.ts`'s `projectKey()`; tool filter;
+ * `--days`/`--since`/`--until` window) into the `ReportScope` both renderers show and the
+ * `Store.load()` filter that produces it — pure, no I/O. Split out of `buildReport` so
+ * `--llm-phases` (DESIGN §15) can load the data once, refine a copy of it, and rebuild the Report
+ * from the SAME scope via `buildReportFromData` without re-deriving any of this.
+ */
+export function resolveReportScope(options: BuildReportOptions, generatedAtMs: number): ResolvedReportScope {
   const scope: ReportScope = options.global
     ? { kind: 'global', tool: options.tool }
     : { kind: 'project', tool: options.tool };
@@ -65,7 +67,17 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
   else if (scope.days !== undefined) filter.since = generatedAtMs - scope.days * DAY_MS;
   if (scope.untilMs !== undefined) filter.until = scope.untilMs;
 
-  const data = await store.load(filter);
+  return { scope, filter };
+}
+
+/**
+ * Runs the pure slice/ratio/rule-engine math over already-loaded `data` for a given `scope`,
+ * producing the single Report model both renderers (P4 terminal, P7 HTML) consume. `byProject`
+ * is always computed from `data.runs` — in project scope the caller's `Store.load()` filter
+ * already narrowed those runs to one `projectKey`, so it naturally collapses to a single entry
+ * there and only fans out to many in global scope.
+ */
+export function buildReportFromData(data: LoadedData, scope: ReportScope, generatedAtMs: number): Report {
   const { runs, turns, toolcalls } = data;
 
   // ISSUE #14: de-duplicates parent-turn wall time that overlaps its own subagents' runs before
@@ -117,4 +129,17 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
   };
   report.recommendations = recommend(report, data, loadThresholds());
   return report;
+}
+
+/**
+ * Loads from `store` and builds the Report in one call — the common path every command uses.
+ * `--llm-phases` (DESIGN §15) instead calls `resolveReportScope` + `store.load` + refine +
+ * `buildReportFromData` directly, so it can rebuild the Report twice (deterministic, then
+ * refined) from one `store.load()`.
+ */
+export async function buildReport(store: Store, options: BuildReportOptions): Promise<Report> {
+  const generatedAtMs = options.now ?? Date.now();
+  const { scope, filter } = resolveReportScope(options, generatedAtMs);
+  const data = await store.load(filter);
+  return buildReportFromData(data, scope, generatedAtMs);
 }

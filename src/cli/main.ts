@@ -22,8 +22,13 @@ Commands:
   report   [--project <path> | --global] [--tool cc|opencode|all]
            [--days N | --since <YYYY-MM-DD> --until <YYYY-MM-DD>] [--full] [--json]
            [--html [path] | --out <path>] [--redact]
+           [--llm-narrative] [--llm-phases [--llm-phases-max <n>]]
            print a stats report to the terminal (or write self-contained HTML with --html);
-           --since/--until win over --days when given
+           --since/--until win over --days when given;
+           --llm-narrative adds a short LLM-written prose summary above the ranked
+           recommendations (needs ANTHROPIC_API_KEY, else prints a notice and continues);
+           --llm-phases re-labels weak/ambiguous phase blocks for this report only via the LLM
+           (never rewrites the stored phases), capped at --llm-phases-max blocks (default 40)
   export   [--project <path> | --global] [--tool cc|opencode|all]
            [--days N | --since <YYYY-MM-DD> --until <YYYY-MM-DD>] [--redact] [--out <path>] [--pretty]
            build the same report as \`report\` and write it as JSON to --out (default
