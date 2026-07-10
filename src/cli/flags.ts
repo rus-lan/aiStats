@@ -10,7 +10,10 @@ export interface ScopeFlags {
   full: boolean;
   /** Print the Report model as JSON instead of the default pretty terminal render. */
   json: boolean;
-  html?: string | true;
+  /** `--html`: also write a self-contained HTML report (in addition to the terminal render). */
+  html: boolean;
+  /** Optional positional path right after `--html` (`report --html out.html`); `--out` takes precedence. */
+  htmlPath?: string;
   out?: string;
   redact: boolean;
 }
@@ -21,7 +24,7 @@ function isToolFilter(value: string): value is ToolFilter {
 
 /** Parses the `--project/--global --tool --days --full --html --out --redact` flag set shared by report-like commands. */
 export function parseScopeFlags(argv: string[]): ScopeFlags {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args: argv,
     options: {
       project: { type: 'string' },
@@ -30,7 +33,7 @@ export function parseScopeFlags(argv: string[]): ScopeFlags {
       days: { type: 'string' },
       full: { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
-      html: { type: 'string' },
+      html: { type: 'boolean', default: false },
       out: { type: 'string' },
       redact: { type: 'boolean', default: false },
     },
@@ -48,11 +51,15 @@ export function parseScopeFlags(argv: string[]): ScopeFlags {
     tool,
     full: Boolean(values.full),
     json: Boolean(values.json),
+    html: Boolean(values.html),
     redact: Boolean(values.redact),
   };
   if (typeof values.project === 'string') scope.project = values.project;
   if (typeof values.days === 'string') scope.days = Number(values.days);
   if (typeof values.out === 'string') scope.out = values.out;
-  if (typeof values.html === 'string') scope.html = values.html;
+
+  const firstPositional = positionals[0];
+  if (typeof firstPositional === 'string' && firstPositional.length > 0) scope.htmlPath = firstPositional;
+
   return scope;
 }

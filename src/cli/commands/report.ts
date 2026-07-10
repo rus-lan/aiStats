@@ -1,6 +1,8 @@
 import { openStore } from '../../core/store/open.js';
 import { buildReport, type BuildReportOptions } from '../../core/metrics/engine.js';
 import { renderReport } from '../../render/terminal/render.js';
+import { renderHtml } from '../../render/html/render.js';
+import { defaultReportPath, guardReportPath, writeReportHtml } from '../../render/html/write.js';
 import { parseScopeFlags } from '../flags.js';
 
 export async function runReport(argv: string[]): Promise<void> {
@@ -21,19 +23,29 @@ export async function runReport(argv: string[]): Promise<void> {
 
     const report = await buildReport(store, options);
 
+    const wantHtml = flags.html || flags.out !== undefined;
+    let target: string | undefined;
+    if (wantHtml) {
+      const explicit = flags.out ?? flags.htmlPath;
+      target = explicit !== undefined ? explicit : defaultReportPath(report);
+      const guard = guardReportPath(target);
+      if (!guard.ok) {
+        process.stderr.write(`error: ${guard.message ?? 'refusing to write there'}\n`);
+        process.exitCode = 2;
+        return;
+      }
+    }
+
     if (flags.json) {
       console.log(JSON.stringify(report, null, 2));
-      return;
+    } else {
+      process.stdout.write(renderReport(report, { full: flags.full }));
     }
 
-    // HTML self-contained output is P7; accept the flags today so scripts calling them don't
-    // break once it lands, but don't write anything yet.
-    if (flags.html !== undefined || flags.out !== undefined) {
-      console.log('HTML output: not implemented yet (P7)');
-      return;
+    if (wantHtml && target !== undefined) {
+      const written = writeReportHtml(target, renderHtml(report));
+      process.stdout.write(`\nHTML report written to ${written}\n`);
     }
-
-    process.stdout.write(renderReport(report, { full: flags.full }));
   } finally {
     await store.close();
   }
