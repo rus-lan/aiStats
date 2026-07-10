@@ -225,7 +225,7 @@ a { color: inherit; }
 .chart-card .cap { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
 .chart { display: block; max-width: 100%; }
 .chart-donut { width: 220px; height: 220px; }
-.chart-cal { display: block; }
+.chart-cal { display: block; width: 100%; height: auto; }
 
 .bar-track { fill: var(--grid); }
 .bar-label { fill: var(--text-2); font-size: 12.5px; }
@@ -242,8 +242,8 @@ a { color: inherit; }
 .cell { stroke: var(--surface); stroke-width: 1.5; }
 .cal-label { fill: var(--muted); font-size: 10px; }
 
-.legend-scale { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); margin-top: 10px; }
-.legend-scale .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
+.legend-scale { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+.legend-scale .sw { width: 22px; height: 11px; border-radius: 999px; border: 1px solid var(--border); }
 
 .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }

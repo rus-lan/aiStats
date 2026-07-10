@@ -220,8 +220,8 @@ function renderTimeline(report: Report): string {
   </div>
   <div class="chart-card" style="margin-top:16px">
     <h3>Activity calendar</h3>
-    <p class="cap">turns per day, by weekday</p>
-    <div class="scroll" style="border:none;box-shadow:none">${calendar}</div>
+    <p class="cap">turns per day — weeks as rows, weekdays as columns</p>
+    ${calendar}
     <div class="legend-scale"><span>Less</span>${scaleSwatches}<span>More</span></div>
   </div>
 </section>`;
