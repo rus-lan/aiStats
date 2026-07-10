@@ -1,25 +1,30 @@
 import type { AdapterTurn, Phase } from '../types.js';
 
-/** Tool names that only read/inspect the repo locally — no edits, no web. */
-export const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS']);
+/**
+ * Tool names that only read/inspect the repo locally — no edits, no web. Covers both Claude
+ * Code's capitalized names and Opencode's lowercase ones (`read`/`grep`/`glob`/`list`) — the two
+ * adapters never share a toolcall name, so listing both casings side by side is unambiguous.
+ */
+export const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'read', 'grep', 'glob', 'list']);
 
 /**
  * Tool names that reach the web (search/fetch/doc lookups). Any toolcall name containing
  * "context7" also counts — MCP server tool names vary by install (e.g.
  * `mcp__plugin_context7_context7__query-docs`), so an exact-name set can't cover them.
  */
-export const WEB_TOOLS = new Set(['WebSearch', 'WebFetch']);
+export const WEB_TOOLS = new Set(['WebSearch', 'WebFetch', 'webfetch']);
 
 /**
  * Tool names that change files on disk. Mirrors `EDIT_TOOL_NAMES` in
- * `adapter/claude-code/transcript.ts` — kept as its own constant here so phase code never
- * depends on the adapter module, and a future adapter (e.g. Opencode's `patch`/`edit`/`write`
- * parts) can map onto the same set without a cross-import.
+ * `adapter/claude-code/transcript.ts` and the Opencode adapter's own edit-tool set (kept as its
+ * own constant here so phase code never depends on either adapter module). `patch` covers
+ * Opencode's standalone `patch`-type parts, synthesized by its adapter into `patch`-named
+ * toolcalls.
  */
-export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'edit', 'write', 'patch']);
 
 /** Tool names that spawn subagents or manage a task list — signals of planning, not doing. */
-export const SPAWN_TOOLS = new Set(['Agent', 'Task', 'TodoWrite']);
+export const SPAWN_TOOLS = new Set(['Agent', 'Task', 'TodoWrite', 'task', 'todowrite']);
 
 const CONTEXT7_PATTERN = /context7/i;
 
@@ -53,6 +58,11 @@ const PLANNER_AGENT_PATTERN = /^plan$/i;
  * `reading` is returned bare for an Explore-type agent; upgrading it to `research` when the
  * turn itself shows web reach is the caller's job (it needs the per-turn signal, not just the
  * run-level agentType).
+ *
+ * All patterns are case-insensitive, which already covers Opencode's own (lowercase) agent
+ * names without any extra cases: `explore`→reading, `build`→implementation, `plan`→planning;
+ * `general` matches none of them and correctly falls through to undefined, same as CC's
+ * `general-purpose`.
  */
 export function phaseFromAgentType(agentType: string | undefined): Phase | undefined {
   if (agentType === undefined) return undefined;

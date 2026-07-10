@@ -1,0 +1,52 @@
+{
+  "info": {
+    "id": "ses_child1",
+    "directory": "/fixture/project",
+    "title": "fixture child session",
+    "agent": "general",
+    "time": { "created": 3100, "updated": 3900 }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": { "created": 3050 }
+      },
+      "parts": [
+        { "type": "text", "text": "go explore" }
+      ]
+    },
+    {
+      "info": {
+        "id": "cmsg1",
+        "role": "assistant",
+        "agent": "explore",
+        "mode": "explore",
+        "modelID": "glm-5.2",
+        "providerID": "zai-coding-plan",
+        "cost": 0,
+        "tokens": { "input": 200, "output": 30, "reasoning": 2, "cache": { "read": 5, "write": 0 }, "total": 237 },
+        "time": { "created": 3100, "completed": 3900 },
+        "finish": "stop"
+      },
+      "parts": [
+        { "type": "step-start", "id": "c1a" },
+        {
+          "type": "tool",
+          "tool": "read",
+          "callID": "ccall1",
+          "state": {
+            "status": "completed",
+            "input": { "filePath": "/fixture/project/README.md" },
+            "time": { "start": 3100, "end": 3200 }
+          }
+        },
+        {
+          "type": "step-finish",
+          "cost": 0,
+          "tokens": { "input": 200, "output": 30, "reasoning": 2, "cache": { "read": 5, "write": 0 }, "total": 237 }
+        }
+      ]
+    }
+  ]
+}

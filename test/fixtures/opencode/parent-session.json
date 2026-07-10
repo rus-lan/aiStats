@@ -1,0 +1,165 @@
+{
+  "info": {
+    "id": "ses_parent1",
+    "directory": "/fixture/project",
+    "title": "fixture parent session",
+    "agent": "build",
+    "time": { "created": 1000, "updated": 5000 }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": { "created": 900 }
+      },
+      "parts": [
+        { "type": "text", "text": "do the thing" }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg1",
+        "role": "assistant",
+        "agent": "build",
+        "mode": "build",
+        "modelID": "glm-5-turbo[1m]",
+        "providerID": "zai-coding-plan",
+        "cost": 0,
+        "tokens": { "input": 100, "output": 20, "reasoning": 5, "cache": { "read": 30, "write": 10 }, "total": 135 },
+        "time": { "created": 1000, "completed": 2000 },
+        "finish": "tool-calls"
+      },
+      "parts": [
+        { "type": "step-start", "id": "p1a" },
+        {
+          "type": "tool",
+          "tool": "edit",
+          "callID": "call1",
+          "state": {
+            "status": "completed",
+            "input": { "filePath": "/fixture/project/src/index.ts" },
+            "time": { "start": 1000, "end": 1100 }
+          }
+        },
+        { "type": "patch", "hash": "abc123", "files": ["/fixture/project/src/index.ts"] },
+        {
+          "type": "step-finish",
+          "cost": 0,
+          "tokens": { "input": 100, "output": 20, "reasoning": 5, "cache": { "read": 30, "write": 10 }, "total": 135 }
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg2",
+        "role": "assistant",
+        "agent": "build",
+        "mode": "build",
+        "modelID": "glm-5-turbo",
+        "providerID": "zai-coding-plan",
+        "cost": 0,
+        "tokens": { "input": 80, "output": 15, "reasoning": 0, "cache": { "read": 0, "write": 0 }, "total": 95 },
+        "time": { "created": 2000, "completed": 3000 },
+        "finish": "tool-calls"
+      },
+      "parts": [
+        { "type": "step-start", "id": "p2a" },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "call2",
+          "state": {
+            "status": "error",
+            "input": { "command": "npm test", "workdir": "/fixture/project" },
+            "time": { "start": 2000, "end": 2500 }
+          }
+        },
+        {
+          "type": "step-finish",
+          "cost": 0.01234,
+          "tokens": { "input": 80, "output": 15, "reasoning": 0, "cache": { "read": 0, "write": 0 }, "total": 95 }
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg3",
+        "role": "assistant",
+        "agent": "build",
+        "mode": "build",
+        "modelID": "glm-5-turbo",
+        "providerID": "zai-coding-plan",
+        "cost": 0,
+        "tokens": { "input": 50, "output": 10, "reasoning": 0, "cache": { "read": 0, "write": 0 }, "total": 60 },
+        "time": { "created": 3000, "completed": 4000 },
+        "finish": "tool-calls"
+      },
+      "parts": [
+        { "type": "step-start", "id": "p3a" },
+        {
+          "type": "tool",
+          "tool": "task",
+          "callID": "call3",
+          "state": {
+            "status": "completed",
+            "input": {
+              "description": "explore the fixture repo",
+              "subagent_type": "explore",
+              "prompt": "look around"
+            },
+            "output": "<task id=\"ses_child1\" state=\"completed\">done</task>",
+            "metadata": { "parentSessionId": "ses_parent1", "sessionId": "ses_child1" },
+            "time": { "start": 3000, "end": 3900 }
+          }
+        },
+        {
+          "type": "step-finish",
+          "cost": 0,
+          "tokens": { "input": 50, "output": 10, "reasoning": 0, "cache": { "read": 0, "write": 0 }, "total": 60 }
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg4",
+        "role": "assistant",
+        "agent": "build",
+        "mode": "build",
+        "modelID": "glm-5-turbo",
+        "providerID": "zai-coding-plan",
+        "cost": 0,
+        "tokens": { "input": 40, "output": 8, "reasoning": 0, "cache": { "read": 0, "write": 0 }, "total": 48 },
+        "time": { "created": 4000, "completed": 5000 },
+        "finish": "stop"
+      },
+      "parts": [
+        { "type": "step-start", "id": "p4a" },
+        {
+          "type": "tool",
+          "tool": "skill",
+          "callID": "callSkill",
+          "state": {
+            "status": "completed",
+            "input": { "name": "desearch" },
+            "time": { "start": 3950, "end": 3960 }
+          }
+        },
+        {
+          "type": "tool",
+          "tool": "webfetch",
+          "callID": "call4",
+          "state": {
+            "status": "completed",
+            "input": { "url": "https://example.com", "format": "markdown" },
+            "time": { "start": 4000, "end": 4500 }
+          }
+        },
+        {
+          "type": "step-finish",
+          "cost": 0,
+          "tokens": { "input": 40, "output": 8, "reasoning": 0, "cache": { "read": 0, "write": 0 }, "total": 48 }
+        }
+      ]
+    }
+  ]
+}
