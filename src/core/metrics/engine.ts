@@ -19,6 +19,10 @@ export interface BuildReportOptions {
   tool: ReportScope['tool'];
   /** `--days N`: only runs starting within the last N days. */
   days?: number;
+  /** `--since YYYY-MM-DD` (epoch ms, local day start). Wins over `days` when set (with `untilMs`). */
+  sinceMs?: number;
+  /** `--until YYYY-MM-DD` (epoch ms, local day end). Wins over `days` when set (with `sinceMs`). */
+  untilMs?: number;
   /** Injection point for tests; defaults to `Date.now()`. */
   now?: number;
 }
@@ -45,15 +49,21 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
     scope.projectName = path.basename(resolvedProjectKey);
   }
 
-  if (options.days !== undefined) {
+  // Feature 1: an explicit `--since`/`--until` window wins over `--days` when both are given;
+  // `--days` alone still works, deriving its own since-boundary further down.
+  if (options.sinceMs !== undefined || options.untilMs !== undefined) {
+    if (options.sinceMs !== undefined) scope.sinceMs = options.sinceMs;
+    if (options.untilMs !== undefined) scope.untilMs = options.untilMs;
+  } else if (options.days !== undefined) {
     scope.days = options.days;
-    scope.sinceMs = generatedAtMs - options.days * DAY_MS;
   }
 
   const filter: LoadFilter = {};
   if (options.tool !== 'all') filter.tool = options.tool;
   if (resolvedProjectKey !== undefined) filter.projectKey = resolvedProjectKey;
   if (scope.sinceMs !== undefined) filter.since = scope.sinceMs;
+  else if (scope.days !== undefined) filter.since = generatedAtMs - scope.days * DAY_MS;
+  if (scope.untilMs !== undefined) filter.until = scope.untilMs;
 
   const data = await store.load(filter);
   const { runs, turns, toolcalls } = data;

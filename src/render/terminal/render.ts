@@ -3,7 +3,7 @@ import type { Ratios, Recommendation, Report } from '../report-model.js';
 import { bar } from './bars.js';
 import { sparkline } from './spark.js';
 import { bold, color, type ColorName, dim } from './color.js';
-import { type Col, dur, header, money, num, pct, row, tokenSum, tokens as tokensLine, truncate } from './format.js';
+import { type Col, dur, header, money, num, pct, row, tokenSum, tokens as tokensLine, truncate, windowLabel } from './format.js';
 
 /**
  * Turns the single Report model (per DESIGN §9) into the default terminal render — no file, just
@@ -33,10 +33,9 @@ function renderHeaderSection(report: Report): string[] {
   const scope = report.scope;
   const scopeLabel = scope.kind === 'global' ? 'Global' : (scope.projectName ?? scope.projectKey ?? 'project');
   const toolLabel = scope.tool === 'all' ? 'all tools' : scope.tool;
-  const windowLabel = scope.days !== undefined ? `last ${scope.days}d` : 'all time';
   const generated = `${new Date(report.generatedAtMs).toISOString().replace('T', ' ').slice(0, 19)} UTC`;
 
-  return [bold(`aiStats report — ${scopeLabel}`), dim(`tool: ${toolLabel} · window: ${windowLabel} · generated ${generated}`)];
+  return [bold(`aiStats report — ${scopeLabel}`), dim(`tool: ${toolLabel} · window: ${windowLabel(scope)} · generated ${generated}`)];
 }
 
 // --- totals -------------------------------------------------------------------------------------

@@ -4,10 +4,17 @@ import { redactReport } from '../../core/util/redact.js';
 import { renderReport } from '../../render/terminal/render.js';
 import { renderHtml } from '../../render/html/render.js';
 import { defaultReportPath, guardReportPath, writeReportHtml } from '../../render/html/write.js';
-import { parseScopeFlags } from '../flags.js';
+import { parseScopeFlags, type ScopeFlags } from '../flags.js';
 
 export async function runReport(argv: string[]): Promise<void> {
-  const flags = parseScopeFlags(argv);
+  let flags: ScopeFlags;
+  try {
+    flags = parseScopeFlags(argv);
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    process.exitCode = 2;
+    return;
+  }
 
   const store = await openStore();
   await store.init();
@@ -21,6 +28,8 @@ export async function runReport(argv: string[]): Promise<void> {
     const options: BuildReportOptions = { global: flags.global, tool: flags.tool };
     if (flags.project !== undefined) options.projectPath = flags.project;
     if (flags.days !== undefined) options.days = flags.days;
+    if (flags.sinceMs !== undefined) options.sinceMs = flags.sinceMs;
+    if (flags.untilMs !== undefined) options.untilMs = flags.untilMs;
 
     const built = await buildReport(store, options);
     // --redact (DESIGN §11): hash project identities before either renderer, or the default HTML

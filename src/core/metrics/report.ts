@@ -85,7 +85,9 @@ export interface ReportScope {
   projectName?: string;
   tool: ToolName | 'all';
   days?: number;
+  /** Explicit `--since`/`--until` window (epoch ms, local calendar-day boundaries) — set only when the user passed those flags, never derived from `days`. Wins over `days` when present. */
   sinceMs?: number;
+  untilMs?: number;
 }
 
 export interface Report {

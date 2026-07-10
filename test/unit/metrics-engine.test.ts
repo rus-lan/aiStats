@@ -242,3 +242,50 @@ void test('an empty store yields a report with zero totals and every ratio left 
 
   await store.close();
 });
+
+void test('--since/--until filters runs by tStart and wins over --days', async () => {
+  const store = new SqliteStore(':memory:');
+  await store.init();
+
+  function runAt(id: string, tStart: number): Run {
+    return {
+      id,
+      tool: 'cc',
+      projectKey: '/tmp/proj-window',
+      isSubagent: false,
+      tStart,
+      tEnd: tStart + 1000,
+      open: false,
+      tokens: EMPTY_TOKENS,
+      cursor: { kind: 'cc-jsonl', path: `/tmp/proj-window/${id}.jsonl` },
+    };
+  }
+
+  const early = runAt('run-early', Date.UTC(2026, 5, 1)); // 2026-06-01, before the window
+  const inWindow = runAt('run-in-window', Date.UTC(2026, 6, 5)); // 2026-07-05, inside the window
+  const late = runAt('run-late', Date.UTC(2026, 6, 20)); // 2026-07-20, after the window
+  for (const run of [early, inWindow, late]) await store.upsertRun(run);
+
+  const sinceMs = Date.UTC(2026, 6, 1);
+  const untilMs = Date.UTC(2026, 6, 10);
+  const now = untilMs + 10_000;
+
+  const windowed = await buildReport(store, { global: true, tool: 'all', sinceMs, untilMs, now });
+  assert.equal(windowed.totals.sessions, 1, 'only the run with tStart inside [sinceMs, untilMs] is in scope');
+  assert.equal(windowed.scope.sinceMs, sinceMs);
+  assert.equal(windowed.scope.untilMs, untilMs);
+  assert.equal(windowed.scope.days, undefined, 'an explicit window must not also carry a days label');
+
+  const byDaysOnly = await buildReport(store, { global: true, tool: 'all', days: 400, now });
+  assert.equal(byDaysOnly.totals.sessions, 3, '--days alone still works, unaffected by the since/until feature');
+  assert.equal(byDaysOnly.scope.days, 400);
+  assert.equal(byDaysOnly.scope.sinceMs, undefined, 'days-derived filtering no longer surfaces on scope.sinceMs');
+
+  const precedence = await buildReport(store, { global: true, tool: 'all', days: 1, sinceMs, untilMs, now });
+  assert.equal(precedence.totals.sessions, 1, 'an explicit --since/--until window wins over --days when both are given');
+  assert.equal(precedence.scope.days, undefined, 'days is dropped from scope once since/until wins');
+  assert.equal(precedence.scope.sinceMs, sinceMs);
+  assert.equal(precedence.scope.untilMs, untilMs);
+
+  await store.close();
+});

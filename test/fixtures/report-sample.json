@@ -2,8 +2,7 @@
   "scope": {
     "kind": "global",
     "tool": "all",
-    "days": 30,
-    "sinceMs": 1781092800000
+    "days": 30
   },
   "generatedAtMs": 1783684800000,
   "totals": {

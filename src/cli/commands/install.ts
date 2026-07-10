@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -105,6 +105,53 @@ function settingsHooksSnippet(): string {
   return JSON.stringify({ hooks: { Stop: [entry], SessionEnd: [entry] } }, null, 2);
 }
 
+/** The Claude Code MCP registration entry for `aistats mcp` (goes under `mcpServers.aistats`). */
+function mcpClaudeCodeEntry(): Record<string, unknown> {
+  return { command: 'aistats', args: ['mcp'] };
+}
+
+/** The Opencode MCP registration entry for `aistats mcp` (goes under `mcp.aistats`). */
+function mcpOpencodeEntry(): Record<string, unknown> {
+  return { type: 'local', command: ['aistats', 'mcp'], enabled: true };
+}
+
+/** Test-only write targets for the `--mcp` snippets — the real `~/.claude.json`/`opencode.json` are never auto-edited. */
+function claudeJsonOverridePath(): string | undefined {
+  return process.env['AISTATS_CLAUDE_JSON'];
+}
+function opencodeJsonOverridePath(): string | undefined {
+  return process.env['AISTATS_OPENCODE_JSON'];
+}
+
+function readJsonObject(file: string): Record<string, unknown> {
+  if (!existsSync(file)) return {};
+  const raw = readFileSync(file, 'utf8').trim();
+  if (raw.length === 0) return {};
+  const parsed: unknown = JSON.parse(raw);
+  return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+}
+
+function objectField(obj: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = obj[key];
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** Merges the `mcpServers.aistats` entry into `file` (creating/preserving whatever else is already there) — only ever called against the `AISTATS_CLAUDE_JSON` test override, never the real `~/.claude.json`. */
+function mergeClaudeMcpJson(file: string): void {
+  const existing = readJsonObject(file);
+  existing['mcpServers'] = { ...objectField(existing, 'mcpServers'), aistats: mcpClaudeCodeEntry() };
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(existing, null, 2)}\n`, 'utf8');
+}
+
+/** Merges the `mcp.aistats` entry into `file` — only ever called against the `AISTATS_OPENCODE_JSON` test override, never the real `opencode.json`. */
+function mergeOpencodeMcpJson(file: string): void {
+  const existing = readJsonObject(file);
+  existing['mcp'] = { ...objectField(existing, 'mcp'), aistats: mcpOpencodeEntry() };
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(existing, null, 2)}\n`, 'utf8');
+}
+
 export async function runInstall(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
@@ -112,6 +159,7 @@ export async function runInstall(argv: string[]): Promise<void> {
       'claude-code': { type: 'boolean', default: false },
       opencode: { type: 'boolean', default: false },
       all: { type: 'boolean', default: false },
+      mcp: { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
     },
     allowPositionals: true,
@@ -124,6 +172,7 @@ export async function runInstall(argv: string[]): Promise<void> {
   const runBoth = values.all === true || (!explicitCc && !explicitOpencode);
   const wantCc = runBoth || explicitCc;
   const wantOpencode = runBoth || explicitOpencode;
+  const wantMcp = values.mcp === true;
   const dryRun = values['dry-run'] === true;
 
   console.log(`aistats install${dryRun ? ' (dry run — nothing will be written)' : ''}`);
@@ -142,6 +191,25 @@ export async function runInstall(argv: string[]): Promise<void> {
     console.log('\nAdd this to ~/.claude/settings.json (merge into any existing "hooks" object):');
     console.log(settingsHooksSnippet());
     console.log('\nThen run /config-apply so ~/claude-config is deployed into ~/.claude (skill, hook script, and this settings.json change).');
+  }
+
+  if (wantMcp) {
+    console.log('\nMCP server registration (`aistats mcp` — stdio, JSON-RPC 2.0):');
+    console.log('  Claude Code — add to ~/.claude.json (user scope) or a project .mcp.json (project scope):');
+    console.log(JSON.stringify({ mcpServers: { aistats: mcpClaudeCodeEntry() } }, null, 2));
+    console.log('  Opencode — add to opencode.json:');
+    console.log(JSON.stringify({ mcp: { aistats: mcpOpencodeEntry() } }, null, 2));
+
+    const ccJsonPath = claudeJsonOverridePath();
+    if (ccJsonPath !== undefined && !dryRun) {
+      mergeClaudeMcpJson(ccJsonPath);
+      console.log(`  [test override] merged into ${ccJsonPath}`);
+    }
+    const ocJsonPath = opencodeJsonOverridePath();
+    if (ocJsonPath !== undefined && !dryRun) {
+      mergeOpencodeMcpJson(ocJsonPath);
+      console.log(`  [test override] merged into ${ocJsonPath}`);
+    }
   }
 
   console.log(`\ninstall: done${dryRun ? ' (dry run, nothing written)' : ''}.`);

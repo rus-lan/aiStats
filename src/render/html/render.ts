@@ -1,6 +1,6 @@
 import type { Phase } from '../../core/types.js';
 import type { ActorStat, ModelStat, PhaseStat, ProjectStat, Ratios, Recommendation, Report, ToolStat } from '../report-model.js';
-import { dur, money, num, pct, tokenSum } from '../terminal/format.js';
+import { dur, money, num, pct, tokenSum, windowLabel } from '../terminal/format.js';
 import { buildStyle, PHASE_ORDER, phaseLabel, phaseVar, seqVar, severityVar } from './theme.js';
 import { esc } from './util.js';
 import { barChart, type BarItem } from './svg/bar.js';
@@ -23,12 +23,11 @@ function renderHead(report: Report): string {
   const scope = report.scope;
   const scopeLabel = scope.kind === 'global' ? 'Global' : (scope.projectName ?? scope.projectKey ?? 'project');
   const toolLabel = scope.tool === 'all' ? 'all tools' : scope.tool;
-  const windowLabel = scope.days !== undefined ? `last ${scope.days}d` : 'all time';
   const generated = `${new Date(report.generatedAtMs).toISOString().replace('T', ' ').slice(0, 19)} UTC`;
   return `<header class="page-head">
   <div>
     <h1>aiStats report · ${esc(String(scopeLabel))}</h1>
-    <div class="sub">tool <b>${esc(toolLabel)}</b> · window <b>${esc(windowLabel)}</b> · generated ${esc(generated)}</div>
+    <div class="sub">tool <b>${esc(toolLabel)}</b> · window <b>${esc(windowLabel(scope))}</b> · generated ${esc(generated)}</div>
   </div>
   <button id="theme-toggle" class="toggle" type="button" aria-label="Toggle colour theme" title="Toggle light / dark">☾</button>
 </header>`;

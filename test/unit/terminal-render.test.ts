@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { Report } from '../../src/render/report-model.js';
 import { renderReport } from '../../src/render/terminal/render.js';
 import { stripAnsi } from '../../src/render/terminal/color.js';
+import { parseDateBoundary } from '../../src/core/util/time.js';
 
 const FIXTURE_PATH = path.join(process.cwd(), 'test', 'fixtures', 'report-sample.json');
 const sampleReport = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as Report;
@@ -152,4 +153,27 @@ void test('renderReport prints a healthy one-liner when no recommendations fired
   const healthyReport: Report = { ...sampleReport, recommendations: [] };
   const output = withEnv({ NO_COLOR: '1', FORCE_COLOR: undefined }, () => renderReport(healthyReport, { full: false }));
   assert.match(output, /no efficiency flags — metrics look healthy/);
+});
+
+void test('renderReport shows an explicit --since/--until window, winning over days', () => {
+  const windowed: Report = {
+    ...sampleReport,
+    scope: {
+      kind: sampleReport.scope.kind,
+      tool: sampleReport.scope.tool,
+      sinceMs: parseDateBoundary('2026-07-01', 'start'),
+      untilMs: parseDateBoundary('2026-07-08', 'end'),
+    },
+  };
+  const rendered = withEnv({ NO_COLOR: '1', FORCE_COLOR: undefined }, () => renderReport(windowed, { full: false }));
+  assert.match(rendered, /window: 2026-07-01 \.\. 2026-07-08/);
+});
+
+void test('renderReport shows a `since <date>` window when only --since is given', () => {
+  const sinceOnly: Report = {
+    ...sampleReport,
+    scope: { kind: sampleReport.scope.kind, tool: sampleReport.scope.tool, sinceMs: parseDateBoundary('2026-07-01', 'start') },
+  };
+  const rendered = withEnv({ NO_COLOR: '1', FORCE_COLOR: undefined }, () => renderReport(sinceOnly, { full: false }));
+  assert.match(rendered, /window: since 2026-07-01/);
 });

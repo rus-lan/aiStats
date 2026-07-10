@@ -1,4 +1,5 @@
 import type { TokenTotals } from '../../core/types.js';
+import type { ReportScope } from '../report-model.js';
 import { stripAnsi } from './color.js';
 
 /** Drops a trailing `.0` (`"5.0"` -> `"5"`) but keeps a real fraction (`"4.5"` stays `"4.5"`). */
@@ -54,6 +55,22 @@ export function pct(fraction: number, decimals = 1): string {
 
 export function money(usd: number): string {
   return `$${usd.toFixed(2)}`;
+}
+
+/** `YYYY-MM-DD` from an epoch-ms value's LOCAL calendar date (inverse of `parseDateBoundary`). */
+function localDate(ms: number): string {
+  const d = new Date(ms);
+  const two = (x: number): string => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}
+
+/** The report header's resolved time window: an explicit `--since`/`--until` range, else `--days`, else "all time". Shared by both the terminal and HTML renderers. */
+export function windowLabel(scope: ReportScope): string {
+  if (scope.sinceMs !== undefined && scope.untilMs !== undefined) return `${localDate(scope.sinceMs)} .. ${localDate(scope.untilMs)}`;
+  if (scope.sinceMs !== undefined) return `since ${localDate(scope.sinceMs)}`;
+  if (scope.untilMs !== undefined) return `until ${localDate(scope.untilMs)}`;
+  if (scope.days !== undefined) return `last ${scope.days}d`;
+  return 'all time';
 }
 
 /** Visible column width — ANSI escapes (color) don't count, so colored cells still line up. */

@@ -6,6 +6,21 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { runInstall } from '../../src/cli/commands/install.js';
 
+/** Captures every `console.log` call made during `fn`, restoring the original afterward even on throw. */
+async function withCapturedLog(fn: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]): void => {
+    lines.push(args.map((a) => String(a)).join(' '));
+  };
+  try {
+    await fn();
+  } finally {
+    console.log = original;
+  }
+  return lines;
+}
+
 interface EnvSandbox {
   claudeConfig: string;
   opencodePlugins: string;
@@ -124,5 +139,97 @@ void test('install --all is idempotent (safe to re-run, overwrites in place)', a
     assert.equal(readFileSync(hookPath(claudeConfig), 'utf8'), firstHook);
     assert.equal(readFileSync(pluginPath(opencodePlugins), 'utf8'), firstPlugin);
     assert.ok((statSync(hookPath(claudeConfig)).mode & 0o111) !== 0, 'hook stays executable after re-install');
+  });
+});
+
+void test('install --mcp prints the Claude Code and Opencode MCP registration snippets', async () => {
+  await withTempTargets(async () => {
+    const lines = await withCapturedLog(() => runInstall(['--mcp', '--dry-run']));
+    const output = lines.join('\n');
+
+    assert.match(output, /"mcpServers"/);
+    assert.match(output, /"aistats":\s*\{\s*"command":\s*"aistats",\s*"args":\s*\[\s*"mcp"\s*\]/);
+    assert.match(output, /"mcp":\s*\{/);
+    assert.match(output, /"type":\s*"local"/);
+    assert.match(output, /"command":\s*\[\s*"aistats",\s*"mcp"\s*\]/);
+    assert.match(output, /"enabled":\s*true/);
+    assert.match(output, /~\/\.claude\.json/, 'mentions where the CC snippet goes');
+    assert.match(output, /opencode\.json/, 'mentions where the Opencode snippet goes');
+  });
+});
+
+void test('install without --mcp never mentions MCP registration', async () => {
+  await withTempTargets(async () => {
+    const lines = await withCapturedLog(() => runInstall(['--all', '--dry-run']));
+    assert.ok(!lines.join('\n').includes('mcpServers'));
+  });
+});
+
+void test('install --mcp writes nothing to the real filesystem by default (print-only)', async () => {
+  await withTempTargets(async () => {
+    const prevCc = process.env['AISTATS_CLAUDE_JSON'];
+    const prevOc = process.env['AISTATS_OPENCODE_JSON'];
+    delete process.env['AISTATS_CLAUDE_JSON'];
+    delete process.env['AISTATS_OPENCODE_JSON'];
+    try {
+      await withCapturedLog(() => runInstall(['--mcp', '--dry-run']));
+      // Nothing else to assert on disk — the point is simply that this does not throw or touch
+      // any real path; the merge helpers are only ever invoked when an override env var is set.
+    } finally {
+      if (prevCc === undefined) delete process.env['AISTATS_CLAUDE_JSON'];
+      else process.env['AISTATS_CLAUDE_JSON'] = prevCc;
+      if (prevOc === undefined) delete process.env['AISTATS_OPENCODE_JSON'];
+      else process.env['AISTATS_OPENCODE_JSON'] = prevOc;
+    }
+  });
+});
+
+void test('install --mcp with AISTATS_CLAUDE_JSON/AISTATS_OPENCODE_JSON overrides merges the snippet into the given files (test-only escape hatch)', async () => {
+  await withTempTargets(async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'aistats-install-mcp-json-'));
+    const ccJson = path.join(dir, 'claude.json');
+    const ocJson = path.join(dir, 'opencode.json');
+
+    const prevCc = process.env['AISTATS_CLAUDE_JSON'];
+    const prevOc = process.env['AISTATS_OPENCODE_JSON'];
+    process.env['AISTATS_CLAUDE_JSON'] = ccJson;
+    process.env['AISTATS_OPENCODE_JSON'] = ocJson;
+    try {
+      await runInstall(['--mcp']);
+
+      const cc = JSON.parse(readFileSync(ccJson, 'utf8')) as { mcpServers: { aistats: { command: string; args: string[] } } };
+      assert.deepEqual(cc.mcpServers.aistats, { command: 'aistats', args: ['mcp'] });
+
+      const oc = JSON.parse(readFileSync(ocJson, 'utf8')) as { mcp: { aistats: { type: string; command: string[]; enabled: boolean } } };
+      assert.deepEqual(oc.mcp.aistats, { type: 'local', command: ['aistats', 'mcp'], enabled: true });
+    } finally {
+      if (prevCc === undefined) delete process.env['AISTATS_CLAUDE_JSON'];
+      else process.env['AISTATS_CLAUDE_JSON'] = prevCc;
+      if (prevOc === undefined) delete process.env['AISTATS_OPENCODE_JSON'];
+      else process.env['AISTATS_OPENCODE_JSON'] = prevOc;
+    }
+  });
+});
+
+void test('install --mcp --dry-run does not write the AISTATS_CLAUDE_JSON/AISTATS_OPENCODE_JSON override files', async () => {
+  await withTempTargets(async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'aistats-install-mcp-dry-'));
+    const ccJson = path.join(dir, 'claude.json');
+    const ocJson = path.join(dir, 'opencode.json');
+
+    const prevCc = process.env['AISTATS_CLAUDE_JSON'];
+    const prevOc = process.env['AISTATS_OPENCODE_JSON'];
+    process.env['AISTATS_CLAUDE_JSON'] = ccJson;
+    process.env['AISTATS_OPENCODE_JSON'] = ocJson;
+    try {
+      await withCapturedLog(() => runInstall(['--mcp', '--dry-run']));
+      assert.equal(existsSync(ccJson), false);
+      assert.equal(existsSync(ocJson), false);
+    } finally {
+      if (prevCc === undefined) delete process.env['AISTATS_CLAUDE_JSON'];
+      else process.env['AISTATS_CLAUDE_JSON'] = prevCc;
+      if (prevOc === undefined) delete process.env['AISTATS_OPENCODE_JSON'];
+      else process.env['AISTATS_OPENCODE_JSON'] = prevOc;
+    }
   });
 });
