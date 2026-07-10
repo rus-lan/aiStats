@@ -1,11 +1,12 @@
 import * as path from 'node:path';
 import type { LoadFilter, Store } from '../store/store.js';
 import { projectKey as resolveProjectKey } from '../util/git.js';
-import { byActor, byDay, byModel, byPhase, byProject, byTool, computeActiveDurations, sumCostUsd, sumDurationMs, sumTokens, sumWallMs } from './slices.js';
+import { byActor, byDay, byModel, byPhase, byProject, byTool, computeActiveDurations, costForTurns, sumDurationMs, sumTokens, sumWallMs } from './slices.js';
 import { computeCounts, computeRatios } from './ratios.js';
 import type { Report, ReportScope } from './report.js';
 import { recommend } from '../recommend/engine.js';
 import { loadThresholds } from '../recommend/thresholds.js';
+import { loadPriceTable } from '../cost/cost.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -67,31 +68,38 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
   const sessionRuns = runs.filter((run) => !run.isSubagent);
   const subagentRuns = runs.filter((run) => run.isSubagent);
 
-  const totalCostUsd = sumCostUsd(runs);
+  // Best-effort $ (DESIGN §12): Opencode's real per-run cost, plus — for Claude Code, which never
+  // records a cost of its own — a derived per-turn estimate (bundled/config-overridden price table
+  // × tokens). Loaded once per report build; every by* breakdown below shares the same table.
+  const priceTable = loadPriceTable();
+  const runById = new Map(runs.map((run) => [run.id, run]));
+  const costResult = costForTurns(turns, runById, priceTable);
+
   const totals: Report['totals'] = {
     sessions: sessionRuns.length,
     subagentRuns: subagentRuns.length,
     turns: turns.length,
     toolcalls: toolcalls.length,
     tokens: sumTokens(turns.map((turn) => turn.tokens)),
-    // pre-P10, CC never carries `costUsd` at all — this is `true` for every CC-only scope today.
-    costPartial: runs.some((run) => run.costUsd === undefined),
+    // true only while some in-scope model is still unpriced; once every model in scope is priced
+    // (bundled or config-overridden) this goes false, even for an all-CC scope.
+    costPartial: costResult.partial,
     activeTimeMs: sumDurationMs(turns, adjustedByTurnId),
     // Orchestrator (top-level) runs only: subagent runs happen concurrently inside their
     // parent's own wall-clock window, so adding their spans in would double-count elapsed time.
     wallTimeMs: sumWallMs(sessionRuns),
   };
-  if (totalCostUsd !== undefined) totals.costUsd = totalCostUsd;
+  if (costResult.costUsd !== undefined) totals.costUsd = costResult.costUsd;
 
   const report: Report = {
     scope,
     generatedAtMs,
     totals,
     byPhase: byPhase(turns, adjustedByTurnId),
-    byActor: byActor(runs, turns),
-    byModel: byModel(turns, runs, adjustedByTurnId),
-    byTool: byTool(runs, turns, adjustedByTurnId),
-    byProject: byProject(runs, turns, adjustedByTurnId),
+    byActor: byActor(runs, turns, priceTable),
+    byModel: byModel(turns, runs, adjustedByTurnId, priceTable),
+    byTool: byTool(runs, turns, adjustedByTurnId, priceTable),
+    byProject: byProject(runs, turns, adjustedByTurnId, priceTable),
     counts,
     ratios,
     timeline: byDay(turns, adjustedByTurnId),

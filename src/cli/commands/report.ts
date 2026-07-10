@@ -1,5 +1,6 @@
 import { openStore } from '../../core/store/open.js';
 import { buildReport, type BuildReportOptions } from '../../core/metrics/engine.js';
+import { redactReport } from '../../core/util/redact.js';
 import { renderReport } from '../../render/terminal/render.js';
 import { renderHtml } from '../../render/html/render.js';
 import { defaultReportPath, guardReportPath, writeReportHtml } from '../../render/html/write.js';
@@ -21,7 +22,10 @@ export async function runReport(argv: string[]): Promise<void> {
     if (flags.project !== undefined) options.projectPath = flags.project;
     if (flags.days !== undefined) options.days = flags.days;
 
-    const report = await buildReport(store, options);
+    const built = await buildReport(store, options);
+    // --redact (DESIGN §11): hash project identities before either renderer, or the default HTML
+    // filename, ever sees them — applies uniformly to terminal, HTML, and --json output.
+    const report = flags.redact ? redactReport(built) : built;
 
     const wantHtml = flags.html || flags.out !== undefined;
     let target: string | undefined;

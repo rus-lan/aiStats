@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import type { Phase, Run, TokenTotals, ToolName, Turn } from '../types.js';
 import { dayBucket } from '../util/time.js';
+import { costForTokensWithTable, type PriceTable } from '../cost/cost.js';
 import type { ActorStat, DayBucket, ModelStat, PhaseStat, ProjectStat, ToolStat } from './report.js';
 
 /**
@@ -173,6 +174,70 @@ export function sumCostUsd(runs: readonly Run[]): number | undefined {
   return any ? sum : undefined;
 }
 
+export interface CostForTurnsResult {
+  costUsd?: number;
+  /** true when at least one turn needed a derived price (its run has no real cost) but its model has none — an "n/a" contributor, not a $0 one. */
+  partial: boolean;
+}
+
+/**
+ * Cost for one set of turns, combining the two sources DESIGN §12 describes: the REAL per-run
+ * cost an adapter already recorded (`Run.costUsd` — today only Opencode ever sets this, from its
+ * own session/message data), counted once per run that contributed a turn here, plus a DERIVED
+ * per-turn estimate (`priceTable` × tokens, via `costForTokensWithTable`) for every turn whose own
+ * run carries no real cost — Claude Code never records one. The result is `undefined` only when
+ * NEITHER source has anything to report for this turn set (e.g. every turn's model is unpriced and
+ * no run here has a real cost); `partial` is true whenever at least one turn needed derivation but
+ * its model has no priced entry.
+ *
+ * `excludeRunIds`, when passed, is both read (skip a run already credited to an earlier bucket in
+ * the same call) and written (record every run credited here). It's needed only where the
+ * caller's bucketing key is a TURN attribute rather than a RUN attribute — `byModel` groups by
+ * each turn's own resolved model, so a single run's turns can land in more than one model bucket,
+ * and without this guard a real per-run cost would be double-counted across them.
+ * `byActor`/`byTool`/`byProject` and the report totals all bucket by a RUN attribute (every run
+ * lands in exactly one of their buckets), so the guard is a no-op there and they omit it.
+ */
+export function costForTurns(
+  turns: readonly Turn[],
+  runById: ReadonlyMap<string, Run>,
+  priceTable: PriceTable,
+  excludeRunIds?: Set<string>,
+): CostForTurnsResult {
+  const contributingRunIds = new Set<string>();
+  for (const turn of turns) contributingRunIds.add(turn.runId);
+
+  const contributingRuns: Run[] = [];
+  for (const runId of contributingRunIds) {
+    if (excludeRunIds?.has(runId)) continue;
+    const run = runById.get(runId);
+    if (run !== undefined) contributingRuns.push(run);
+  }
+  const realCost = sumCostUsd(contributingRuns);
+
+  let derivedSum = 0;
+  let anyDerived = false;
+  let partial = false;
+  for (const turn of turns) {
+    const run = runById.get(turn.runId);
+    if (run?.costUsd !== undefined) continue; // already counted via `realCost` above
+    const modelId = turn.model ?? run?.model;
+    const derived = modelId !== undefined ? costForTokensWithTable(priceTable, modelId, turn.tokens) : undefined;
+    if (derived !== undefined) {
+      derivedSum += derived;
+      anyDerived = true;
+    } else {
+      partial = true;
+    }
+  }
+
+  if (excludeRunIds !== undefined) for (const runId of contributingRunIds) excludeRunIds.add(runId);
+
+  const result: CostForTurnsResult = { partial };
+  if (realCost !== undefined || anyDerived) result.costUsd = (realCost ?? 0) + derivedSum;
+  return result;
+}
+
 export function groupTurnsByRun(turns: readonly Turn[]): Map<string, Turn[]> {
   const map = new Map<string, Turn[]>();
   for (const turn of turns) {
@@ -217,8 +282,9 @@ export function actorKeyOf(run: Run): { actor: string; isSubagent: boolean } {
   return { actor: run.agentType ?? 'unknown-subagent', isSubagent: true };
 }
 
-export function byActor(runs: readonly Run[], turns: readonly Turn[]): ActorStat[] {
+export function byActor(runs: readonly Run[], turns: readonly Turn[], priceTable: PriceTable): ActorStat[] {
   const turnsByRun = groupTurnsByRun(turns);
+  const runById = new Map(runs.map((run) => [run.id, run]));
   const buckets = new Map<string, { isSubagent: boolean; runs: Run[]; turns: Turn[] }>();
   for (const run of runs) {
     const { actor, isSubagent } = actorKeyOf(run);
@@ -233,7 +299,7 @@ export function byActor(runs: readonly Run[], turns: readonly Turn[]): ActorStat
 
   const stats: ActorStat[] = [];
   for (const [actor, bucket] of buckets) {
-    const costUsd = sumCostUsd(bucket.runs);
+    const cost = costForTurns(bucket.turns, runById, priceTable);
     const stat: ActorStat = {
       actor,
       isSubagent: bucket.isSubagent,
@@ -242,37 +308,48 @@ export function byActor(runs: readonly Run[], turns: readonly Turn[]): ActorStat
       durationMs: sumWallMs(bucket.runs),
       tokens: sumTokens(bucket.turns.map((turn) => turn.tokens)),
     };
-    if (costUsd !== undefined) stat.costUsd = costUsd;
+    if (cost.costUsd !== undefined) stat.costUsd = cost.costUsd;
     stats.push(stat);
   }
   return stats.sort((a, b) => b.durationMs - a.durationMs);
 }
 
-/** Groups turns by their own `model` (falling back to the owning run's `model` when a turn never resolved one), active time only. */
-export function byModel(turns: readonly Turn[], runs: readonly Run[], adjustedByTurnId: ReadonlyMap<string, number>): ModelStat[] {
-  const runModelById = new Map(runs.map((run) => [run.id, run.model]));
+/**
+ * Groups turns by their own `model` (falling back to the owning run's `model` when a turn never
+ * resolved one), active time only. Unlike `byActor`/`byTool`/`byProject`, this bucketing key is a
+ * TURN attribute, not a RUN one, so a single run's turns can in principle split across more than
+ * one model bucket — `attributedRunIds` (shared across the whole call, see `costForTurns`) keeps a
+ * run's real per-run cost from being credited to more than one of those buckets.
+ */
+export function byModel(turns: readonly Turn[], runs: readonly Run[], adjustedByTurnId: ReadonlyMap<string, number>, priceTable: PriceTable): ModelStat[] {
+  const runById = new Map(runs.map((run) => [run.id, run]));
   const buckets = new Map<string, Turn[]>();
   for (const turn of turns) {
-    const model = turn.model ?? runModelById.get(turn.runId) ?? 'unknown';
+    const model = turn.model ?? runById.get(turn.runId)?.model ?? 'unknown';
     const list = buckets.get(model);
     if (list === undefined) buckets.set(model, [turn]);
     else list.push(turn);
   }
 
+  const attributedRunIds = new Set<string>();
   const stats: ModelStat[] = [];
   for (const [model, list] of buckets) {
-    stats.push({
+    const cost = costForTurns(list, runById, priceTable, attributedRunIds);
+    const stat: ModelStat = {
       model,
       turns: list.length,
       durationMs: sumDurationMs(list, adjustedByTurnId),
       tokens: sumTokens(list.map((turn) => turn.tokens)),
-    });
+    };
+    if (cost.costUsd !== undefined) stat.costUsd = cost.costUsd;
+    stats.push(stat);
   }
   return stats.sort((a, b) => b.durationMs - a.durationMs);
 }
 
-export function byTool(runs: readonly Run[], turns: readonly Turn[], adjustedByTurnId: ReadonlyMap<string, number>): ToolStat[] {
+export function byTool(runs: readonly Run[], turns: readonly Turn[], adjustedByTurnId: ReadonlyMap<string, number>, priceTable: PriceTable): ToolStat[] {
   const turnsByRun = groupTurnsByRun(turns);
+  const runById = new Map(runs.map((run) => [run.id, run]));
   const buckets = new Map<ToolName, { runs: Run[]; turns: Turn[] }>();
   for (const run of runs) {
     let bucket = buckets.get(run.tool);
@@ -286,7 +363,7 @@ export function byTool(runs: readonly Run[], turns: readonly Turn[], adjustedByT
 
   const stats: ToolStat[] = [];
   for (const [tool, bucket] of buckets) {
-    const costUsd = sumCostUsd(bucket.runs);
+    const cost = costForTurns(bucket.turns, runById, priceTable);
     const stat: ToolStat = {
       tool,
       sessions: bucket.runs.filter((run) => !run.isSubagent).length,
@@ -294,14 +371,15 @@ export function byTool(runs: readonly Run[], turns: readonly Turn[], adjustedByT
       durationMs: sumDurationMs(bucket.turns, adjustedByTurnId),
       tokens: sumTokens(bucket.turns.map((turn) => turn.tokens)),
     };
-    if (costUsd !== undefined) stat.costUsd = costUsd;
+    if (cost.costUsd !== undefined) stat.costUsd = cost.costUsd;
     stats.push(stat);
   }
   return stats.sort((a, b) => b.durationMs - a.durationMs);
 }
 
-export function byProject(runs: readonly Run[], turns: readonly Turn[], adjustedByTurnId: ReadonlyMap<string, number>): ProjectStat[] {
+export function byProject(runs: readonly Run[], turns: readonly Turn[], adjustedByTurnId: ReadonlyMap<string, number>, priceTable: PriceTable): ProjectStat[] {
   const turnsByRun = groupTurnsByRun(turns);
+  const runById = new Map(runs.map((run) => [run.id, run]));
   const buckets = new Map<string, { runs: Run[]; turns: Turn[]; tools: Set<ToolName> }>();
   for (const run of runs) {
     let bucket = buckets.get(run.projectKey);
@@ -316,7 +394,7 @@ export function byProject(runs: readonly Run[], turns: readonly Turn[], adjusted
 
   const stats: ProjectStat[] = [];
   for (const [projectKey, bucket] of buckets) {
-    const costUsd = sumCostUsd(bucket.runs);
+    const cost = costForTurns(bucket.turns, runById, priceTable);
     const stat: ProjectStat = {
       projectKey,
       name: path.basename(projectKey),
@@ -326,7 +404,7 @@ export function byProject(runs: readonly Run[], turns: readonly Turn[], adjusted
       durationMs: sumDurationMs(bucket.turns, adjustedByTurnId),
       tokens: sumTokens(bucket.turns.map((turn) => turn.tokens)),
     };
-    if (costUsd !== undefined) stat.costUsd = costUsd;
+    if (cost.costUsd !== undefined) stat.costUsd = cost.costUsd;
     stats.push(stat);
   }
   return stats.sort((a, b) => b.durationMs - a.durationMs);
