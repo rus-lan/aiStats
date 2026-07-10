@@ -1,6 +1,6 @@
 {
   "name": "aistats",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cross-tool stats collector for AI coding agents (Claude Code + Opencode)",
   "type": "module",
   "engines": {
