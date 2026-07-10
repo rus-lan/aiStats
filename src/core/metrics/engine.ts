@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import type { LoadFilter, Store } from '../store/store.js';
 import { projectKey as resolveProjectKey } from '../util/git.js';
-import { byActor, byDay, byModel, byPhase, byProject, byTool, sumCostUsd, sumDurationMs, sumTokens, sumWallMs } from './slices.js';
+import { byActor, byDay, byModel, byPhase, byProject, byTool, computeActiveDurations, sumCostUsd, sumDurationMs, sumTokens, sumWallMs } from './slices.js';
 import { computeCounts, computeRatios } from './ratios.js';
 import type { Report, ReportScope } from './report.js';
 
@@ -55,8 +55,12 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
   const data = await store.load(filter);
   const { runs, turns, toolcalls } = data;
 
+  // ISSUE #14: de-duplicates parent-turn wall time that overlaps its own subagents' runs before
+  // any phase/time aggregation below sums turn durations — see slices.ts's header comment.
+  const adjustedByTurnId = computeActiveDurations(runs, turns);
+
   const counts = computeCounts(data);
-  const ratios = computeRatios(data, counts);
+  const ratios = computeRatios(data, counts, adjustedByTurnId);
 
   const sessionRuns = runs.filter((run) => !run.isSubagent);
   const subagentRuns = runs.filter((run) => run.isSubagent);
@@ -70,7 +74,7 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
     tokens: sumTokens(turns.map((turn) => turn.tokens)),
     // pre-P10, CC never carries `costUsd` at all — this is `true` for every CC-only scope today.
     costPartial: runs.some((run) => run.costUsd === undefined),
-    activeTimeMs: sumDurationMs(turns),
+    activeTimeMs: sumDurationMs(turns, adjustedByTurnId),
     // Orchestrator (top-level) runs only: subagent runs happen concurrently inside their
     // parent's own wall-clock window, so adding their spans in would double-count elapsed time.
     wallTimeMs: sumWallMs(sessionRuns),
@@ -81,14 +85,14 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
     scope,
     generatedAtMs,
     totals,
-    byPhase: byPhase(turns),
+    byPhase: byPhase(turns, adjustedByTurnId),
     byActor: byActor(runs, turns),
-    byModel: byModel(turns, runs),
-    byTool: byTool(runs, turns),
-    byProject: byProject(runs, turns),
+    byModel: byModel(turns, runs, adjustedByTurnId),
+    byTool: byTool(runs, turns, adjustedByTurnId),
+    byProject: byProject(runs, turns, adjustedByTurnId),
     counts,
     ratios,
-    timeline: byDay(turns),
+    timeline: byDay(turns, adjustedByTurnId),
     recommendations: [],
   };
 }

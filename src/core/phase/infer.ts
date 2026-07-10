@@ -1,5 +1,13 @@
 import type { AdapterRun, AdapterTurn, Phase, Turn } from '../types.js';
-import { hasEditSignal, hasWebSignal, isFixAgentType, phaseFromAgentType, phaseFromSkill, phaseFromToolMix } from './signals.js';
+import {
+  hasEditSignal,
+  hasWebSignal,
+  isFixAgentType,
+  phaseFromAgentType,
+  phaseFromSkill,
+  phaseFromStrongSkill,
+  phaseFromToolMix,
+} from './signals.js';
 import { assignBlocks, type PhaseSignal } from './blocks.js';
 
 interface Classified {
@@ -7,14 +15,8 @@ interface Classified {
   explicit: boolean;
 }
 
-/**
- * First-defined-wins per-turn classification, before the impl-vs-fix pass: explicit skill tag,
- * then the run's own agentType (upgrading a bare `reading` to `research` when the turn itself
- * shows web reach — that needs the per-turn signal, so it can't live in `phaseFromAgentType`
- * itself), then tool-mix, then a last-resort default.
- */
-function classifyTurn(turn: AdapterTurn, run: AdapterRun): Classified {
-  const skillPhase = phaseFromSkill(turn.skill);
+/** Shared agentType -> tool-mix -> default fallback, once the caller has already resolved (or ruled out) a skill-driven phase. */
+function classifyBySkillPriority(turn: AdapterTurn, run: AdapterRun, skillPhase: Phase | undefined): Classified {
   if (skillPhase !== undefined) return { phase: skillPhase, explicit: true };
 
   const agentPhase = phaseFromAgentType(run.agentType);
@@ -27,6 +29,23 @@ function classifyTurn(turn: AdapterTurn, run: AdapterRun): Classified {
   if (toolMixPhase !== undefined) return { phase: toolMixPhase, explicit: false };
 
   return { phase: hasEditSignal(turn) ? 'implementation' : 'planning', explicit: false };
+}
+
+/**
+ * First-defined-wins per-turn classification, before the impl-vs-fix pass. Main-loop runs keep
+ * the original priority: explicit skill tag, then the run's own agentType (upgrading a bare
+ * `reading` to `research` when the turn itself shows web reach — that needs the per-turn signal,
+ * so it can't live in `phaseFromAgentType` itself), then tool-mix, then a last-resort default.
+ *
+ * ISSUE #13: a SUBAGENT run inherits its parent's active `skill` unchanged for its whole run — a
+ * label about the main loop's command, not about what this subagent is actually doing — so it
+ * only gets to drive phase for the small "strong" set (review/verify/fix) where the tag is
+ * reliable regardless of who's running under it; everything else falls through to the run's own
+ * `agentType` first (far more informative for a subagent), same as the main-loop fallback chain.
+ */
+function classifyTurn(turn: AdapterTurn, run: AdapterRun): Classified {
+  const skillPhase = run.isSubagent ? phaseFromStrongSkill(turn.skill) : phaseFromSkill(turn.skill);
+  return classifyBySkillPriority(turn, run, skillPhase);
 }
 
 interface FixState {
@@ -86,8 +105,9 @@ function markFixEpisodeStarts(turns: Turn[]): void {
 
 /**
  * Deterministic 7-phase inference: per-turn signal priority (skill > agentType > tool-mix >
- * default), an impl-vs-fix rework pass, then block assignment with hysteresis (see
- * `phase/blocks.ts`) and fix-episode marking.
+ * default for main-loop runs; strong-skill-only > agentType > tool-mix > default for subagent
+ * runs — see `classifyTurn`), an impl-vs-fix rework pass, then block assignment with hysteresis
+ * (see `phase/blocks.ts`) and fix-episode marking.
  */
 export function inferPhases(run: AdapterRun): Turn[] {
   const runIsFixAgent = isFixAgentType(run.agentType);

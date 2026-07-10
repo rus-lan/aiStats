@@ -142,8 +142,13 @@ void test('buildReport reconciles totals against phase/model/day breakdowns and 
   assert.equal(report.totals.tokens.cacheWrite, 5);
   assert.equal(report.totals.costPartial, true, 'neither run carries costUsd yet (CC pre-P10)');
   assert.equal(report.totals.costUsd, undefined);
-  assert.equal(report.totals.activeTimeMs, 4500, '1000+2000+700+500+300');
-  assert.equal(report.totals.wallTimeMs, 4700, 'orchestrator run wall time only (T1+2700 - T0)');
+  // ISSUE #14: run-orch's own turns are adjusted for overlap with its direct child (run-sub,
+  // spanning [T0, T1+300] = [T0, T0+2300]): o1 [T0,T0+1000] is fully inside it -> adjusted 0;
+  // o2 [T1,T1+2000]=[T0+2000,T0+4000] overlaps it by 300 (T0+2000..T0+2300) -> adjusted 1700;
+  // o3 [T0+4000,T0+4700] doesn't overlap it at all -> unchanged 700. run-sub has no children of
+  // its own, so s1/s2 stay raw (500, 300). Adjusted total: 0+1700+700+500+300 = 3200.
+  assert.equal(report.totals.activeTimeMs, 3200, 'de-duplicated: subagent overlap subtracted from run-orch, not double-counted');
+  assert.equal(report.totals.wallTimeMs, 4700, 'orchestrator run wall time only (T1+2700 - T0), unaffected by the #14 adjustment');
 
   // --- byPhase: totals reconcile, pct sums to ~100 ---
   const phaseDurationSum = report.byPhase.reduce((sum, entry) => sum + entry.durationMs, 0);
@@ -155,9 +160,9 @@ void test('buildReport reconciles totals against phase/model/day breakdowns and 
   const fixPhase = report.byPhase.find((entry) => entry.phase === 'fix');
   assert.ok(implPhase && fixPhase);
   assert.equal(implPhase.turns, 2);
-  assert.equal(implPhase.durationMs, 1500);
+  assert.equal(implPhase.durationMs, 500, 'o1 adjusted to 0 (fully inside run-sub) + s1 unchanged 500');
   assert.equal(fixPhase.turns, 3, 'o2, o3, s2 are all fix-phase turns');
-  assert.equal(fixPhase.durationMs, 3000);
+  assert.equal(fixPhase.durationMs, 2700, 'o2 adjusted 1700 + o3 unchanged 700 + s2 unchanged 300');
 
   // --- byModel: token sums reconcile against totals ---
   const modelTokenSum = report.byModel.reduce(
@@ -192,7 +197,9 @@ void test('buildReport reconciles totals against phase/model/day breakdowns and 
   assert.equal(report.counts.fixEpisodes, 2, 'one episode start in run-orch (o2) + one in run-sub (s2), not 3 fix turns');
   assert.equal(report.counts.fixEdits, 3, 'edit toolcalls inside fix-phase turns: tc-o2, tc-o3, tc-s2b');
   assert.equal(report.counts.reviewPasses, 0, 'no review-phase turns in this fixture');
-  assert.equal(report.counts.rework, 1, 'only a.ts is re-edited within the same run (run-orch)');
+  // ISSUE #15: o2 re-edits a.ts right after o1, but with no intervening verify/review/fix turn
+  // between them (o2 is itself fix-phase, which doesn't count as its own gate) -> not rework.
+  assert.equal(report.counts.rework, 0, 'a.ts is re-edited in the very next turn, with no intervening gate turn -> not rework');
   assert.equal(report.counts.subagentSpawns, 1);
 
   // --- ratios ---
@@ -204,9 +211,9 @@ void test('buildReport reconciles totals against phase/model/day breakdowns and 
   const expectedParallelism = 2300 / 4700; // Σ subagent wallMs / Σ orchestrator wallMs
   assert.ok(Math.abs((report.ratios.subagentParallelism ?? 0) - expectedParallelism) < 1e-9);
 
-  assert.equal(report.ratios.fixToImplTime, 3000 / 1500);
-  assert.equal(report.ratios.fixToImplEdits, 3 / 2);
-  assert.equal(report.ratios.reworkLoopsPerSession, 1 / 1);
+  assert.equal(report.ratios.fixToImplTime, 2700 / 500, 'ISSUE #14: fix/impl time uses the adjusted durations, same as byPhase');
+  assert.equal(report.ratios.fixToImplEdits, 3 / 2, 'edit-count ratio is unaffected by the #14 duration adjustment');
+  assert.equal(report.ratios.reworkLoopsPerSession, 0 / 2, 'ISSUE #15: 0 rework / 2 runs-with-edits (run-orch and run-sub both touched a file)');
 
   await store.close();
 });

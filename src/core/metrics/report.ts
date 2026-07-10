@@ -70,6 +70,7 @@ export interface Ratios {
   fixToImplEdits?: number;
   tokensPerFix?: number;
   researchToImplTime?: number;
+  /** ISSUE #15: rework loops (`Counts.rework`) divided by runs that touched at least one file — the field name is kept for API stability, but the denominator is per edit-run, not per `Counts.sessions`. */
   reworkLoopsPerSession?: number;
   subagentParallelism?: number;
   cacheHitRatio?: number;

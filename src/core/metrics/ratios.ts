@@ -1,7 +1,7 @@
 import type { Run, Toolcall, Turn } from '../types.js';
 import type { LoadedData } from '../store/store.js';
 import type { Counts, Ratios } from './report.js';
-import { groupTurnsByRun, runWallMs, turnDurationMs } from './slices.js';
+import { activeDurationMs, computeActiveDurations, groupTurnsByRun, runWallMs } from './slices.js';
 
 /** `undefined` (never `NaN`/`Infinity`) whenever the denominator can't support a real ratio. */
 function ratio(numerator: number, denominator: number): number | undefined {
@@ -17,8 +17,9 @@ function turnById(turns: readonly Turn[]): Map<string, Turn> {
   return new Map(turns.map((turn) => [turn.id, turn]));
 }
 
-function durationOfPhase(turns: readonly Turn[], phase: Turn['phase']): number {
-  return turns.filter((turn) => turn.phase === phase).reduce((sum, turn) => sum + turnDurationMs(turn), 0);
+/** ISSUE #14: uses the adjusted (subagent-overlap-free) duration, same as `byPhase` — fix/impl and research/impl time must reconcile against the same "active time" the phase breakdown reports. */
+function durationOfPhase(turns: readonly Turn[], phase: Turn['phase'], adjustedByTurnId: ReadonlyMap<string, number>): number {
+  return turns.filter((turn) => turn.phase === phase).reduce((sum, turn) => sum + activeDurationMs(turn, adjustedByTurnId), 0);
 }
 
 function editToolcallsInPhase(toolcalls: readonly Toolcall[], turnsById: Map<string, Turn>, phase: Turn['phase']): number {
@@ -26,44 +27,65 @@ function editToolcallsInPhase(toolcalls: readonly Toolcall[], turnsById: Map<str
 }
 
 /**
- * Counts a re-edit of a file already touched earlier IN THE SAME RUN as one rework event — a
- * file first edited in run A and again in run B is not rework (different tasks/sessions), only a
- * repeat within one run is. Toolcalls are ordered by `(turn.tStart, toolcall.tStart)` per run
- * before walking, since `Toolcall.idx`/insertion order isn't guaranteed to be chronological.
+ * ISSUE #15: a bare re-edit of an already-touched file is normal incremental work, not rework —
+ * counting every one of those (the old behavior) produced 40–120 "rework loops" per session on
+ * the real store, scope-unstable noise. A rework event now requires a genuine "had to come back
+ * and fix it" signal: the file is edited again only AFTER at least one intervening `verify`,
+ * `review`, or `fix`-phase turn since its previous edit, in the same run. Walks each run's own
+ * turns once in `tStart` order, keeping a running count of gate-phase turns seen so far; a file's
+ * edit counts as rework only when that running count grew since the file's previous edit (i.e. a
+ * gate turn happened strictly between the two edits — the edit turn's own phase, even if it is
+ * itself `fix`, never counts as its own intervening gate).
  */
 function countRework(turns: readonly Turn[], toolcalls: readonly Toolcall[]): number {
   const turnsById = turnById(turns);
-  interface EditEvent {
-    runId: string;
-    file: string;
-    turnTStart: number;
-    tcTStart: number;
-  }
-  const events: EditEvent[] = [];
+  const turnsByRun = groupTurnsByRun(turns);
+
+  const editedFilesByTurn = new Map<string, Set<string>>();
   for (const call of toolcalls) {
     if (!call.isEdit || call.file === undefined) continue;
     const turn = turnsById.get(call.turnId);
     if (turn === undefined) continue;
-    events.push({ runId: turn.runId, file: call.file, turnTStart: turn.tStart, tcTStart: call.tStart });
-  }
-
-  const byRun = new Map<string, EditEvent[]>();
-  for (const event of events) {
-    const list = byRun.get(event.runId);
-    if (list === undefined) byRun.set(event.runId, [event]);
-    else list.push(event);
+    let files = editedFilesByTurn.get(turn.id);
+    if (files === undefined) {
+      files = new Set<string>();
+      editedFilesByTurn.set(turn.id, files);
+    }
+    files.add(call.file);
   }
 
   let rework = 0;
-  for (const list of byRun.values()) {
-    list.sort((a, b) => a.turnTStart - b.turnTStart || a.tcTStart - b.tcTStart);
-    const seenFiles = new Set<string>();
-    for (const event of list) {
-      if (seenFiles.has(event.file)) rework += 1;
-      else seenFiles.add(event.file);
+  for (const runTurns of turnsByRun.values()) {
+    const sorted = [...runTurns].sort((a, b) => a.tStart - b.tStart);
+    const gateCountAtLastEdit = new Map<string, number>();
+    let gateCount = 0;
+    for (const turn of sorted) {
+      const files = editedFilesByTurn.get(turn.id);
+      if (files !== undefined) {
+        for (const file of files) {
+          const previousGateCount = gateCountAtLastEdit.get(file);
+          if (previousGateCount !== undefined && gateCount > previousGateCount) rework += 1;
+          gateCountAtLastEdit.set(file, gateCount);
+        }
+      }
+      if (turn.phase === 'verify' || turn.phase === 'review' || turn.phase === 'fix') gateCount += 1;
     }
   }
   return rework;
+}
+
+/** ISSUE #15: `reworkLoopsPerSession`'s denominator — runs (any run, including subagents) that touched at least one file. `Counts.sessions` (non-subagent runs only) undercounts and excludes exactly the runs where most edits — and most rework — happen. */
+function runsWithEdits(runs: readonly Run[], turns: readonly Turn[], toolcalls: readonly Toolcall[]): number {
+  const turnsById = turnById(turns);
+  const loadedRunIds = new Set(runs.map((run) => run.id));
+  const editRunIds = new Set<string>();
+  for (const call of toolcalls) {
+    if (!call.isEdit) continue;
+    const turn = turnsById.get(call.turnId);
+    if (turn === undefined || !loadedRunIds.has(turn.runId)) continue;
+    editRunIds.add(turn.runId);
+  }
+  return editRunIds.size;
 }
 
 /** First edit toolcall's `tStart` minus its run's own `tStart`, averaged over sessions (non-subagent runs) that touched at least one file; sessions with no edit at all are excluded, not counted as 0. */
@@ -96,6 +118,12 @@ function avgTimeToFirstEditMs(runs: readonly Run[], turns: readonly Turn[], tool
  * boundary phase, or where the review/verify window ends before the reading/research window
  * starts (e.g. a fix-only run, or one that reviewed before reading anything new), is excluded from
  * the average rather than reported as a negative or zero cycle time.
+ *
+ * Deliberately NOT touched by ISSUE #14's duration adjustment: this is a span between two turn
+ * boundaries (`tStart`/`tEnd` of specific turns), not a sum of turn durations, so it was never
+ * double-counting subagent wall time the way `byPhase`/`totals.activeTimeMs` were — the run's own
+ * elapsed wall clock from "started reading" to "finished reviewing" is exactly what a cycle time
+ * should report, subagents included.
  */
 function avgCycleTimeMs(runs: readonly Run[], turns: readonly Turn[]): number | undefined {
   const turnsByRun = groupTurnsByRun(turns);
@@ -145,14 +173,20 @@ export function computeCounts(data: LoadedData): Counts {
   };
 }
 
-/** Derived ratios (`Report.ratios`) — every field guards its own divide-by-zero to `undefined`. */
-export function computeRatios(data: LoadedData, counts: Counts): Ratios {
+/**
+ * Derived ratios (`Report.ratios`) — every field guards its own divide-by-zero to `undefined`.
+ * `adjustedByTurnId` is the ISSUE #14 subagent-overlap-free duration map (`slices.ts`); callers
+ * that already computed one for the same `data` (e.g. `engine.ts`, to share it with `byPhase`)
+ * should pass it in, but it's optional so direct unit tests can call this without building one.
+ */
+export function computeRatios(data: LoadedData, counts: Counts, adjustedByTurnId?: ReadonlyMap<string, number>): Ratios {
   const { runs, turns, toolcalls } = data;
   const turnsById = turnById(turns);
+  const adjusted = adjustedByTurnId ?? computeActiveDurations(runs, turns);
 
-  const fixDurationMs = durationOfPhase(turns, 'fix');
-  const implDurationMs = durationOfPhase(turns, 'implementation');
-  const researchDurationMs = durationOfPhase(turns, 'research');
+  const fixDurationMs = durationOfPhase(turns, 'fix', adjusted);
+  const implDurationMs = durationOfPhase(turns, 'implementation', adjusted);
+  const researchDurationMs = durationOfPhase(turns, 'research', adjusted);
   const fixEdits = editToolcallsInPhase(toolcalls, turnsById, 'fix');
   const implEdits = editToolcallsInPhase(toolcalls, turnsById, 'implementation');
   const fixOutputTokens = turns
@@ -174,7 +208,7 @@ export function computeRatios(data: LoadedData, counts: Counts): Ratios {
   set('fixToImplEdits', ratio(fixEdits, implEdits));
   set('tokensPerFix', ratio(fixOutputTokens, counts.fixEpisodes));
   set('researchToImplTime', ratio(researchDurationMs, implDurationMs));
-  set('reworkLoopsPerSession', ratio(counts.rework, counts.sessions));
+  set('reworkLoopsPerSession', ratio(counts.rework, runsWithEdits(runs, turns, toolcalls)));
   set('subagentParallelism', ratio(subagentWallMs, orchestratorWallMs));
   set('cacheHitRatio', ratio(cacheRead, input + cacheRead));
   set('avgTimeToFirstEditMs', avgTimeToFirstEditMs(runs, turns, toolcalls));

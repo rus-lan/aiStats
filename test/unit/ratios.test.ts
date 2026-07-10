@@ -40,45 +40,88 @@ function edit(id: string, turnId: string, file: string, tStart = 0): Toolcall {
   return { id, turnId, name: 'Edit', tStart, status: 'ok', isEdit: true, file };
 }
 
-void test('rework counts a re-edit of a file already touched earlier in the same run, not across runs', () => {
-  // same-run re-edit -> 1 rework
-  const sameRunData: LoadedData = {
+void test('ISSUE #15: a bare re-edit of a file with no intervening verify/review/fix turn is NOT rework (just a streak)', () => {
+  const data: LoadedData = {
     runs: [run('r1')],
     turns: [
-      turn('t1', 'r1', { tStart: 0, idx: 0 }),
-      turn('t2', 'r1', { tStart: 100, idx: 1 }),
+      turn('t1', 'r1', { tStart: 0, idx: 0, phase: 'implementation' }),
+      turn('t2', 'r1', { tStart: 100, idx: 1, phase: 'implementation' }),
     ],
     toolcalls: [edit('e1', 't1', 'x.ts', 0), edit('e2', 't2', 'x.ts', 100)],
   };
-  assert.equal(computeCounts(sameRunData).rework, 1);
+  assert.equal(computeCounts(data).rework, 0, 'no gate turn between the two edits -> ordinary incremental work, not rework');
+});
 
-  // same file, but touched by two different runs -> not rework
+for (const gatePhase of ['verify', 'review', 'fix'] as const) {
+  void test(`ISSUE #15: a re-edit of a file AFTER an intervening ${gatePhase} turn counts as rework`, () => {
+    const data: LoadedData = {
+      runs: [run('r1')],
+      turns: [
+        turn('t1', 'r1', { tStart: 0, idx: 0, phase: 'implementation' }),
+        turn('tg', 'r1', { tStart: 50, idx: 1, phase: gatePhase }), // intervening gate turn, no edits
+        turn('t2', 'r1', { tStart: 100, idx: 2, phase: 'implementation' }),
+      ],
+      toolcalls: [edit('e1', 't1', 'x.ts', 0), edit('e2', 't2', 'x.ts', 100)],
+    };
+    assert.equal(computeCounts(data).rework, 1);
+  });
+}
+
+void test('rework does not cross runs: the same file re-edited in a different run is not rework', () => {
   const crossRunData: LoadedData = {
     runs: [run('r1'), run('r2')],
     turns: [turn('t1', 'r1', { tStart: 0 }), turn('t2', 'r2', { tStart: 100 })],
     toolcalls: [edit('e1', 't1', 'x.ts', 0), edit('e2', 't2', 'x.ts', 100)],
   };
   assert.equal(computeCounts(crossRunData).rework, 0);
+});
 
-  // a different file in the same run -> not rework
+void test('rework requires the same file: a different file in the same run is not rework, gate turn or not', () => {
   const differentFileData: LoadedData = {
     runs: [run('r1')],
-    turns: [turn('t1', 'r1', { tStart: 0 }), turn('t2', 'r1', { tStart: 100, idx: 1 })],
+    turns: [
+      turn('t1', 'r1', { tStart: 0 }),
+      turn('tg', 'r1', { tStart: 50, idx: 1, phase: 'verify' }),
+      turn('t2', 'r1', { tStart: 100, idx: 2 }),
+    ],
     toolcalls: [edit('e1', 't1', 'a.ts', 0), edit('e2', 't2', 'b.ts', 100)],
   };
   assert.equal(computeCounts(differentFileData).rework, 0);
 });
 
-void test('rework orders edits by (turn.tStart, toolcall.tStart), not array/insertion order', () => {
-  // toolcalls are listed out of chronological order on purpose (e2 before e1 in the array) —
-  // the run still only touches x.ts twice, so this must still be exactly 1 rework either way,
-  // proving the count doesn't depend on array order.
+void test('rework ordering does not depend on array/insertion order (turns are sorted by tStart before walking)', () => {
+  // Listed out of chronological order on purpose: the second edit of x.ts comes first in the
+  // array, the gate turn second, the first edit last — the run still only re-edits x.ts once
+  // after one intervening verify, so this must be exactly 1 rework regardless of array order.
   const data: LoadedData = {
     runs: [run('r1')],
-    turns: [turn('t1', 'r1', { tStart: 500, idx: 1 }), turn('t2', 'r1', { tStart: 0, idx: 0 })],
-    toolcalls: [edit('e1', 't1', 'x.ts', 500), edit('e2', 't2', 'x.ts', 0)],
+    turns: [
+      turn('t2', 'r1', { tStart: 500, idx: 2 }),
+      turn('tg', 'r1', { tStart: 250, idx: 1, phase: 'verify' }),
+      turn('t1', 'r1', { tStart: 0, idx: 0 }),
+    ],
+    toolcalls: [edit('e2', 't2', 'x.ts', 500), edit('e1', 't1', 'x.ts', 0)],
   };
   assert.equal(computeCounts(data).rework, 1);
+});
+
+void test('ISSUE #15: reworkLoopsPerSession divides by runs that touched at least one file (including subagent runs), not by session count', () => {
+  // A lone subagent run with no top-level "session" run at all — the old session-count
+  // denominator would have been 0 (undefined ratio); the new per-edit-run denominator counts it.
+  const data: LoadedData = {
+    runs: [run('r1', { isSubagent: true, agentType: 'build' })],
+    turns: [
+      turn('t1', 'r1', { tStart: 0, idx: 0, phase: 'implementation' }),
+      turn('tg', 'r1', { tStart: 50, idx: 1, phase: 'verify' }),
+      turn('t2', 'r1', { tStart: 100, idx: 2, phase: 'implementation' }),
+    ],
+    toolcalls: [edit('e1', 't1', 'x.ts', 0), edit('e2', 't2', 'x.ts', 100)],
+  };
+  const counts = computeCounts(data);
+  assert.equal(counts.sessions, 0, 'no non-subagent runs at all');
+  assert.equal(counts.rework, 1);
+  const ratios = computeRatios(data, counts);
+  assert.equal(ratios.reworkLoopsPerSession, 1, '1 rework / 1 run-with-edits, even though it is a subagent run');
 });
 
 void test('avgTimeToFirstEditMs averages only over sessions that touched a file, excluding edit-less sessions', () => {

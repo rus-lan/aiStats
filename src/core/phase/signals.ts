@@ -84,23 +84,47 @@ export function isFixAgentType(agentType: string | undefined): boolean {
   return agentType !== undefined && /-fix$/i.test(agentType);
 }
 
-const SKILL_RULES: ReadonlyArray<{ pattern: RegExp; phase: Phase }> = [
-  { pattern: /(code-review|security-review|review)/i, phase: 'review' },
-  { pattern: /^verify$/i, phase: 'verify' },
-  { pattern: /(feedhub-fix|autoresearch-fix|autoresearch:fix)/i, phase: 'fix' },
-  { pattern: /(desearch|deep-research|autoresearch)/i, phase: 'research' },
-  { pattern: /(grilling|grill-me|init|writing-plans|brainstorming)/i, phase: 'planning' },
+/**
+ * `strong` marks the rules ISSUE #13 keeps trustworthy even for a subagent run: review/verify/fix
+ * are deliberate, unambiguous command tags (`code-review`, `security-review`, `verify`,
+ * `feedhub-fix`, `autoresearch-fix`, `autoresearch:fix`) that stay true regardless of who's
+ * running under them. `research`/`planning` are NOT strong — a subagent inherits its parent's
+ * active skill for its whole run, so e.g. an Explore subagent spawned under `/init` would
+ * otherwise classify 100% as planning instead of reading (see `phaseFromStrongSkill` below).
+ */
+const SKILL_RULES: ReadonlyArray<{ pattern: RegExp; phase: Phase; strong: boolean }> = [
+  { pattern: /(code-review|security-review|review)/i, phase: 'review', strong: true },
+  { pattern: /^verify$/i, phase: 'verify', strong: true },
+  { pattern: /(feedhub-fix|autoresearch-fix|autoresearch:fix)/i, phase: 'fix', strong: true },
+  { pattern: /(desearch|deep-research|autoresearch)/i, phase: 'research', strong: false },
+  { pattern: /(grilling|grill-me|init|writing-plans|brainstorming)/i, phase: 'planning', strong: false },
 ];
 
 /**
  * Maps an active turn `skill` to a phase. Order matters: the fix-flavoured autoresearch skills
  * (`autoresearch-fix`, `autoresearch:fix`) must be checked before the generic `autoresearch*`
- * research rule, or they'd be swallowed by it.
+ * research rule, or they'd be swallowed by it. Main-loop runs only — see `phaseFromStrongSkill`
+ * for the subagent-safe subset.
  */
 export function phaseFromSkill(skill: string | undefined): Phase | undefined {
   if (skill === undefined) return undefined;
   for (const rule of SKILL_RULES) {
     if (rule.pattern.test(skill)) return rule.phase;
+  }
+  return undefined;
+}
+
+/**
+ * ISSUE #13: same mapping as `phaseFromSkill`, restricted to the `strong` review/verify/fix rules
+ * — the only skill signal a SUBAGENT run should let override its own `agentType`/tool-mix. A
+ * skill tag is an attribute of the whole (possibly hours-long) main-loop session, inherited
+ * unchanged by every subagent spawned under it; trusting it for `research`/`planning` too would
+ * let one main-loop command eclipse every subagent's own, more specific signal.
+ */
+export function phaseFromStrongSkill(skill: string | undefined): Phase | undefined {
+  if (skill === undefined) return undefined;
+  for (const rule of SKILL_RULES) {
+    if (rule.strong && rule.pattern.test(skill)) return rule.phase;
   }
   return undefined;
 }

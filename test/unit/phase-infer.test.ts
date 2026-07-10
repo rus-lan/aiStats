@@ -145,6 +145,37 @@ void test('hysteresis merges a weak (tool-mix-derived) singleton sandwiched betw
   assert.equal(blockIds.size, 1, 'all three turns now share one contiguous block');
 });
 
+void test('ISSUE #13: a subagent does not let an inherited skill outside the strong set eclipse its agentType', () => {
+  // skill='init' is inherited from the parent's active command for this whole subagent run — it
+  // maps to `planning` in `phaseFromSkill`, but `init` isn't in the strong (review/verify/fix)
+  // set, so for a subagent it must fall through to the far more informative agentType instead.
+  const run = makeRun(
+    [
+      makeTurn({ idx: 1, toolcalls: [tc('Read')], skill: 'init' }),
+      makeTurn({ idx: 2, toolcalls: [tc('Grep')], skill: 'init' }),
+    ],
+    { agentType: 'Explore', isSubagent: true },
+  );
+  const turns = inferPhases(run);
+  assert.equal(turns[0]?.phase, 'reading');
+  assert.equal(turns[1]?.phase, 'reading');
+});
+
+void test('a main-loop run with skill=\'init\' still classifies as planning (subagent-only change)', () => {
+  const run = makeRun([makeTurn({ idx: 1, toolcalls: [tc('Read')], skill: 'init' })]);
+  const turns = inferPhases(run);
+  assert.equal(turns[0]?.phase, 'planning');
+});
+
+void test('ISSUE #13: a subagent still trusts an inherited skill from the strong set (review/verify/fix)', () => {
+  const run = makeRun([makeTurn({ idx: 1, toolcalls: [tc('Read')], skill: 'verify' })], {
+    agentType: 'Explore',
+    isSubagent: true,
+  });
+  const turns = inferPhases(run);
+  assert.equal(turns[0]?.phase, 'verify', 'verify is in the strong set, so it still overrides agentType even for a subagent');
+});
+
 void test('hysteresis does not merge a singleton carrying an explicit skill/agentType signal', () => {
   const run = makeRun([
     makeTurn({ idx: 1, toolcalls: [tc('Edit', { isEdit: true, file: 'a.ts' })] }), // implementation
