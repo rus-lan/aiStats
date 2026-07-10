@@ -1,5 +1,6 @@
 import { openStore } from '../../core/store/open.js';
 import { buildReport, type BuildReportOptions } from '../../core/metrics/engine.js';
+import { renderReport } from '../../render/terminal/render.js';
 import { parseScopeFlags } from '../flags.js';
 
 export async function runReport(argv: string[]): Promise<void> {
@@ -20,13 +21,19 @@ export async function runReport(argv: string[]): Promise<void> {
 
     const report = await buildReport(store, options);
 
-    // Pretty terminal rendering lands in P4; JSON is the only render this build ships, so print
-    // it either way — `--json` (and the note below) are here so both keep working once P4 makes
-    // the terminal render the default and `--json` becomes an explicit opt-in.
-    if (!flags.json) {
-      console.log('(terminal renderer lands in P4 — printing the Report as JSON for now; pass --json to silence this note)');
+    if (flags.json) {
+      console.log(JSON.stringify(report, null, 2));
+      return;
     }
-    console.log(JSON.stringify(report, null, 2));
+
+    // HTML self-contained output is P7; accept the flags today so scripts calling them don't
+    // break once it lands, but don't write anything yet.
+    if (flags.html !== undefined || flags.out !== undefined) {
+      console.log('HTML output: not implemented yet (P7)');
+      return;
+    }
+
+    process.stdout.write(renderReport(report, { full: flags.full }));
   } finally {
     await store.close();
   }

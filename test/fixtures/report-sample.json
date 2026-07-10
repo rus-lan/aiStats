@@ -1,0 +1,701 @@
+{
+  "scope": {
+    "kind": "global",
+    "tool": "all",
+    "days": 30,
+    "sinceMs": 1781092800000
+  },
+  "generatedAtMs": 1783684800000,
+  "totals": {
+    "sessions": 42,
+    "subagentRuns": 87,
+    "turns": 612,
+    "toolcalls": 1450,
+    "tokens": {
+      "input": 820000,
+      "output": 410000,
+      "cacheRead": 1250000,
+      "cacheWrite": 63000,
+      "reasoning": 12000
+    },
+    "costUsd": 18.42,
+    "costPartial": true,
+    "activeTimeMs": 27900000,
+    "wallTimeMs": 39600000
+  },
+  "byPhase": [
+    {
+      "phase": "reading",
+      "turns": 40,
+      "durationMs": 1800000,
+      "pctTime": 6.451612903225806,
+      "tokens": {
+        "input": 12800,
+        "output": 8000,
+        "cacheRead": 17600,
+        "cacheWrite": 1200
+      }
+    },
+    {
+      "phase": "research",
+      "turns": 25,
+      "durationMs": 2700000,
+      "pctTime": 9.67741935483871,
+      "tokens": {
+        "input": 9600,
+        "output": 6000,
+        "cacheRead": 13200,
+        "cacheWrite": 900
+      }
+    },
+    {
+      "phase": "planning",
+      "turns": 15,
+      "durationMs": 900000,
+      "pctTime": 3.225806451612903,
+      "tokens": {
+        "input": 4800,
+        "output": 3000,
+        "cacheRead": 6600,
+        "cacheWrite": 450
+      }
+    },
+    {
+      "phase": "implementation",
+      "turns": 310,
+      "durationMs": 14400000,
+      "pctTime": 51.61290322580645,
+      "tokens": {
+        "input": 336000,
+        "output": 210000,
+        "cacheRead": 462000,
+        "cacheWrite": 31500
+      }
+    },
+    {
+      "phase": "review",
+      "turns": 30,
+      "durationMs": 1200000,
+      "pctTime": 4.301075268817205,
+      "tokens": {
+        "input": 14400,
+        "output": 9000,
+        "cacheRead": 19800,
+        "cacheWrite": 1350
+      }
+    },
+    {
+      "phase": "verify",
+      "turns": 60,
+      "durationMs": 1500000,
+      "pctTime": 5.376344086021505,
+      "tokens": {
+        "input": 8000,
+        "output": 5000,
+        "cacheRead": 11000,
+        "cacheWrite": 750
+      }
+    },
+    {
+      "phase": "fix",
+      "turns": 132,
+      "durationMs": 5400000,
+      "pctTime": 19.35483870967742,
+      "tokens": {
+        "input": 270400,
+        "output": 169000,
+        "cacheRead": 371800,
+        "cacheWrite": 25350
+      }
+    }
+  ],
+  "byActor": [
+    {
+      "actor": "orchestrator",
+      "isSubagent": false,
+      "runs": 42,
+      "turns": 210,
+      "durationMs": 25000000,
+      "tokens": {
+        "input": 400000,
+        "output": 150000,
+        "cacheRead": 900000,
+        "cacheWrite": 40000
+      },
+      "costUsd": 8.1
+    },
+    {
+      "actor": "build",
+      "isSubagent": true,
+      "runs": 30,
+      "turns": 140,
+      "durationMs": 9000000,
+      "tokens": {
+        "input": 180000,
+        "output": 90000,
+        "cacheRead": 200000,
+        "cacheWrite": 10000
+      },
+      "costUsd": 3.2
+    },
+    {
+      "actor": "explore",
+      "isSubagent": true,
+      "runs": 25,
+      "turns": 80,
+      "durationMs": 4000000,
+      "tokens": {
+        "input": 90000,
+        "output": 40000,
+        "cacheRead": 80000,
+        "cacheWrite": 5000
+      }
+    },
+    {
+      "actor": "react-dev",
+      "isSubagent": true,
+      "runs": 10,
+      "turns": 60,
+      "durationMs": 3000000,
+      "tokens": {
+        "input": 60000,
+        "output": 50000,
+        "cacheRead": 30000,
+        "cacheWrite": 3000
+      },
+      "costUsd": 2.5
+    },
+    {
+      "actor": "go-dev",
+      "isSubagent": true,
+      "runs": 8,
+      "turns": 40,
+      "durationMs": 2000000,
+      "tokens": {
+        "input": 30000,
+        "output": 20000,
+        "cacheRead": 15000,
+        "cacheWrite": 1000
+      }
+    },
+    {
+      "actor": "rust-dev",
+      "isSubagent": true,
+      "runs": 6,
+      "turns": 30,
+      "durationMs": 1500000,
+      "tokens": {
+        "input": 20000,
+        "output": 15000,
+        "cacheRead": 10000,
+        "cacheWrite": 1000
+      }
+    },
+    {
+      "actor": "tauri-dev",
+      "isSubagent": true,
+      "runs": 4,
+      "turns": 20,
+      "durationMs": 1000000,
+      "tokens": {
+        "input": 15000,
+        "output": 10000,
+        "cacheRead": 8000,
+        "cacheWrite": 500
+      }
+    },
+    {
+      "actor": "seo-writer",
+      "isSubagent": true,
+      "runs": 2,
+      "turns": 12,
+      "durationMs": 500000,
+      "tokens": {
+        "input": 8000,
+        "output": 6000,
+        "cacheRead": 4000,
+        "cacheWrite": 200
+      }
+    },
+    {
+      "actor": "translator",
+      "isSubagent": true,
+      "runs": 1,
+      "turns": 10,
+      "durationMs": 300000,
+      "tokens": {
+        "input": 5000,
+        "output": 4000,
+        "cacheRead": 2000,
+        "cacheWrite": 100
+      }
+    },
+    {
+      "actor": "general-purpose",
+      "isSubagent": true,
+      "runs": 1,
+      "turns": 10,
+      "durationMs": 200000,
+      "tokens": {
+        "input": 4000,
+        "output": 3000,
+        "cacheRead": 1000,
+        "cacheWrite": 100
+      }
+    }
+  ],
+  "byModel": [
+    {
+      "model": "claude-sonnet-5",
+      "turns": 350,
+      "durationMs": 13000000,
+      "tokens": {
+        "input": 420000,
+        "output": 210000,
+        "cacheRead": 600000,
+        "cacheWrite": 30000,
+        "reasoning": 4000
+      },
+      "costUsd": 6.8
+    },
+    {
+      "model": "claude-opus-4-8",
+      "turns": 200,
+      "durationMs": 12000000,
+      "tokens": {
+        "input": 300000,
+        "output": 150000,
+        "cacheRead": 500000,
+        "cacheWrite": 25000,
+        "reasoning": 8000
+      },
+      "costUsd": 10.5
+    },
+    {
+      "model": "claude-haiku-4-5",
+      "turns": 50,
+      "durationMs": 2000000,
+      "tokens": {
+        "input": 90000,
+        "output": 40000,
+        "cacheRead": 130000,
+        "cacheWrite": 6000
+      },
+      "costUsd": 1.12
+    },
+    {
+      "model": "zai-glm-5-turbo",
+      "turns": 12,
+      "durationMs": 900000,
+      "tokens": {
+        "input": 10000,
+        "output": 10000,
+        "cacheRead": 20000,
+        "cacheWrite": 2000
+      },
+      "costUsd": 0
+    }
+  ],
+  "byTool": [
+    {
+      "tool": "cc",
+      "sessions": 40,
+      "turns": 600,
+      "durationMs": 27000000,
+      "tokens": {
+        "input": 810000,
+        "output": 400000,
+        "cacheRead": 1230000,
+        "cacheWrite": 61000,
+        "reasoning": 12000
+      }
+    },
+    {
+      "tool": "opencode",
+      "sessions": 2,
+      "turns": 12,
+      "durationMs": 900000,
+      "tokens": {
+        "input": 10000,
+        "output": 10000,
+        "cacheRead": 20000,
+        "cacheWrite": 2000
+      },
+      "costUsd": 0
+    }
+  ],
+  "byProject": [
+    {
+      "projectKey": "/tmp/fixture/feedHub",
+      "name": "feedHub",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 10,
+      "turns": 180,
+      "durationMs": 9000000,
+      "tokens": {
+        "input": 72000,
+        "output": 36000,
+        "cacheRead": 108000,
+        "cacheWrite": 5400
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/aiStats",
+      "name": "aiStats",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 8,
+      "turns": 150,
+      "durationMs": 7000000,
+      "tokens": {
+        "input": 60000,
+        "output": 30000,
+        "cacheRead": 90000,
+        "cacheWrite": 4500
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/monitoring-dashboard",
+      "name": "monitoring-dashboard",
+      "tools": [
+        "cc",
+        "opencode"
+      ],
+      "sessions": 6,
+      "turns": 90,
+      "durationMs": 4000000,
+      "tokens": {
+        "input": 36000,
+        "output": 18000,
+        "cacheRead": 54000,
+        "cacheWrite": 2700
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/crm-backend",
+      "name": "crm-backend",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 4,
+      "turns": 60,
+      "durationMs": 2500000,
+      "tokens": {
+        "input": 24000,
+        "output": 12000,
+        "cacheRead": 36000,
+        "cacheWrite": 1800
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/telegram-bot",
+      "name": "telegram-bot",
+      "tools": [
+        "opencode"
+      ],
+      "sessions": 3,
+      "turns": 40,
+      "durationMs": 1800000,
+      "tokens": {
+        "input": 16000,
+        "output": 8000,
+        "cacheRead": 24000,
+        "cacheWrite": 1200
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/api-gateway",
+      "name": "api-gateway",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 3,
+      "turns": 35,
+      "durationMs": 1200000,
+      "tokens": {
+        "input": 14000,
+        "output": 7000,
+        "cacheRead": 21000,
+        "cacheWrite": 1050
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/data-pipeline",
+      "name": "data-pipeline",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 2,
+      "turns": 25,
+      "durationMs": 900000,
+      "tokens": {
+        "input": 10000,
+        "output": 5000,
+        "cacheRead": 15000,
+        "cacheWrite": 750
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/mobile-app",
+      "name": "mobile-app",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 2,
+      "turns": 20,
+      "durationMs": 600000,
+      "tokens": {
+        "input": 8000,
+        "output": 4000,
+        "cacheRead": 12000,
+        "cacheWrite": 600
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/blog-engine",
+      "name": "blog-engine",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 1,
+      "turns": 15,
+      "durationMs": 400000,
+      "tokens": {
+        "input": 6000,
+        "output": 3000,
+        "cacheRead": 9000,
+        "cacheWrite": 450
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/portfolio-site",
+      "name": "portfolio-site",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 1,
+      "turns": 10,
+      "durationMs": 250000,
+      "tokens": {
+        "input": 4000,
+        "output": 2000,
+        "cacheRead": 6000,
+        "cacheWrite": 300
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/ml-experiments",
+      "name": "ml-experiments",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 1,
+      "turns": 8,
+      "durationMs": 150000,
+      "tokens": {
+        "input": 3200,
+        "output": 1600,
+        "cacheRead": 4800,
+        "cacheWrite": 240
+      }
+    },
+    {
+      "projectKey": "/tmp/fixture/internal-tools",
+      "name": "internal-tools",
+      "tools": [
+        "cc"
+      ],
+      "sessions": 1,
+      "turns": 4,
+      "durationMs": 100000,
+      "tokens": {
+        "input": 1600,
+        "output": 800,
+        "cacheRead": 2400,
+        "cacheWrite": 120
+      }
+    }
+  ],
+  "counts": {
+    "sessions": 42,
+    "subagentRuns": 87,
+    "turns": 612,
+    "toolcalls": 1450,
+    "subagentSpawns": 87,
+    "fixEpisodes": 54,
+    "fixEdits": 210,
+    "reviewPasses": 18,
+    "rework": 37
+  },
+  "ratios": {
+    "fixToImplTime": 1.6666666666666667,
+    "fixToImplEdits": 1.2,
+    "tokensPerFix": 850,
+    "researchToImplTime": 0.12,
+    "reworkLoopsPerSession": 0.35,
+    "subagentParallelism": 0.47,
+    "cacheHitRatio": 0.996,
+    "avgTimeToFirstEditMs": 185000,
+    "avgCycleTimeMs": 5400000
+  },
+  "timeline": [
+    {
+      "date": "2026-06-27",
+      "turns": 8,
+      "durationMs": 360000,
+      "tokens": {
+        "input": 10400,
+        "output": 5200,
+        "cacheRead": 16000,
+        "cacheWrite": 800
+      }
+    },
+    {
+      "date": "2026-06-28",
+      "turns": 14,
+      "durationMs": 630000,
+      "tokens": {
+        "input": 18200,
+        "output": 9100,
+        "cacheRead": 28000,
+        "cacheWrite": 1400
+      }
+    },
+    {
+      "date": "2026-06-29",
+      "turns": 20,
+      "durationMs": 900000,
+      "tokens": {
+        "input": 26000,
+        "output": 13000,
+        "cacheRead": 40000,
+        "cacheWrite": 2000
+      }
+    },
+    {
+      "date": "2026-06-30",
+      "turns": 34,
+      "durationMs": 1530000,
+      "tokens": {
+        "input": 44200,
+        "output": 22100,
+        "cacheRead": 68000,
+        "cacheWrite": 3400
+      }
+    },
+    {
+      "date": "2026-07-01",
+      "turns": 48,
+      "durationMs": 2160000,
+      "tokens": {
+        "input": 62400,
+        "output": 31200,
+        "cacheRead": 96000,
+        "cacheWrite": 4800
+      }
+    },
+    {
+      "date": "2026-07-02",
+      "turns": 66,
+      "durationMs": 2970000,
+      "tokens": {
+        "input": 85800,
+        "output": 42900,
+        "cacheRead": 132000,
+        "cacheWrite": 6600
+      }
+    },
+    {
+      "date": "2026-07-03",
+      "turns": 88,
+      "durationMs": 3960000,
+      "tokens": {
+        "input": 114400,
+        "output": 57200,
+        "cacheRead": 176000,
+        "cacheWrite": 8800
+      }
+    },
+    {
+      "date": "2026-07-04",
+      "turns": 104,
+      "durationMs": 4680000,
+      "tokens": {
+        "input": 135200,
+        "output": 67600,
+        "cacheRead": 208000,
+        "cacheWrite": 10400
+      }
+    },
+    {
+      "date": "2026-07-05",
+      "turns": 76,
+      "durationMs": 3420000,
+      "tokens": {
+        "input": 98800,
+        "output": 49400,
+        "cacheRead": 152000,
+        "cacheWrite": 7600
+      }
+    },
+    {
+      "date": "2026-07-06",
+      "turns": 58,
+      "durationMs": 2610000,
+      "tokens": {
+        "input": 75400,
+        "output": 37700,
+        "cacheRead": 116000,
+        "cacheWrite": 5800
+      }
+    },
+    {
+      "date": "2026-07-07",
+      "turns": 38,
+      "durationMs": 1710000,
+      "tokens": {
+        "input": 49400,
+        "output": 24700,
+        "cacheRead": 76000,
+        "cacheWrite": 3800
+      }
+    },
+    {
+      "date": "2026-07-08",
+      "turns": 22,
+      "durationMs": 990000,
+      "tokens": {
+        "input": 28600,
+        "output": 14300,
+        "cacheRead": 44000,
+        "cacheWrite": 2200
+      }
+    },
+    {
+      "date": "2026-07-09",
+      "turns": 12,
+      "durationMs": 540000,
+      "tokens": {
+        "input": 15600,
+        "output": 7800,
+        "cacheRead": 24000,
+        "cacheWrite": 1200
+      }
+    },
+    {
+      "date": "2026-07-10",
+      "turns": 24,
+      "durationMs": 1080000,
+      "tokens": {
+        "input": 31200,
+        "output": 15600,
+        "cacheRead": 48000,
+        "cacheWrite": 2400
+      }
+    }
+  ],
+  "recommendations": []
+}

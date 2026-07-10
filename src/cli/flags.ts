@@ -8,7 +8,7 @@ export interface ScopeFlags {
   tool: ToolFilter;
   days?: number;
   full: boolean;
-  /** Print the Report model as JSON instead of the (P4) pretty terminal render. */
+  /** Print the Report model as JSON instead of the default pretty terminal render. */
   json: boolean;
   html?: string | true;
   out?: string;
