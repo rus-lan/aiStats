@@ -17,7 +17,8 @@ function usage(): string {
   return `Usage: aistats <command> [flags]
 
 Commands:
-  report   [--project <path> | --global] [--tool cc|opencode|all] [--days N] [--full] [--html [path] | --out <path>] [--redact]
+  report   [--project <path> | --global] [--tool cc|opencode|all] [--days N] [--full] [--json]
+           [--html [path] | --out <path>] [--redact]
            print a stats report to the terminal (or write self-contained HTML with --html)
   ingest   [--session <path>] [--all]
            incrementally collect raw Claude Code / Opencode sessions into the local store

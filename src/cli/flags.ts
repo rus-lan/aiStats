@@ -8,6 +8,8 @@ export interface ScopeFlags {
   tool: ToolFilter;
   days?: number;
   full: boolean;
+  /** Print the Report model as JSON instead of the (P4) pretty terminal render. */
+  json: boolean;
   html?: string | true;
   out?: string;
   redact: boolean;
@@ -27,6 +29,7 @@ export function parseScopeFlags(argv: string[]): ScopeFlags {
       tool: { type: 'string', default: 'all' },
       days: { type: 'string' },
       full: { type: 'boolean', default: false },
+      json: { type: 'boolean', default: false },
       html: { type: 'string' },
       out: { type: 'string' },
       redact: { type: 'boolean', default: false },
@@ -44,6 +47,7 @@ export function parseScopeFlags(argv: string[]): ScopeFlags {
     global: Boolean(values.global),
     tool,
     full: Boolean(values.full),
+    json: Boolean(values.json),
     redact: Boolean(values.redact),
   };
   if (typeof values.project === 'string') scope.project = values.project;
