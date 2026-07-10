@@ -1,30 +1,110 @@
-// P2 will replace this with the real 7-phase state machine.
-// For now: a trivial tool-mix rule, no read-vs-research split, no fix-episode detection.
-
 import type { AdapterRun, AdapterTurn, Phase, Turn } from '../types.js';
+import { hasEditSignal, hasWebSignal, isFixAgentType, phaseFromAgentType, phaseFromSkill, phaseFromToolMix } from './signals.js';
+import { assignBlocks, type PhaseSignal } from './blocks.js';
 
-const READ_ONLY_TOOLS = new Set(['Read', 'Grep', 'Glob']);
-
-function phaseFor(turn: AdapterTurn): Phase {
-  if (turn.toolcalls.some((toolcall) => toolcall.isEdit)) return 'implementation';
-  if (turn.toolcalls.length > 0 && turn.toolcalls.every((toolcall) => READ_ONLY_TOOLS.has(toolcall.name))) {
-    return 'reading';
-  }
-  return 'planning';
+interface Classified {
+  phase: Phase;
+  explicit: boolean;
 }
 
-/** Maps each AdapterTurn of a run to a persisted Turn, assigning a placeholder phase and grouping consecutive same-phase turns into a block. Signature kept stable for P2. */
-export function inferPhases(run: AdapterRun): Turn[] {
-  const turns: Turn[] = [];
-  let blockPhase: Phase | undefined;
-  let blockStartIdx = 0;
+/**
+ * First-defined-wins per-turn classification, before the impl-vs-fix pass: explicit skill tag,
+ * then the run's own agentType (upgrading a bare `reading` to `research` when the turn itself
+ * shows web reach — that needs the per-turn signal, so it can't live in `phaseFromAgentType`
+ * itself), then tool-mix, then a last-resort default.
+ */
+function classifyTurn(turn: AdapterTurn, run: AdapterRun): Classified {
+  const skillPhase = phaseFromSkill(turn.skill);
+  if (skillPhase !== undefined) return { phase: skillPhase, explicit: true };
 
-  for (const adapterTurn of run.turns) {
-    const phase = phaseFor(adapterTurn);
-    if (phase !== blockPhase) {
-      blockPhase = phase;
-      blockStartIdx = adapterTurn.idx;
+  const agentPhase = phaseFromAgentType(run.agentType);
+  if (agentPhase !== undefined) {
+    const phase = agentPhase === 'reading' && hasWebSignal(turn) ? 'research' : agentPhase;
+    return { phase, explicit: true };
+  }
+
+  const toolMixPhase = phaseFromToolMix(turn);
+  if (toolMixPhase !== undefined) return { phase: toolMixPhase, explicit: false };
+
+  return { phase: hasEditSignal(turn) ? 'implementation' : 'planning', explicit: false };
+}
+
+interface FixState {
+  /** Set when the most recent verify-bash call in this run failed; cleared by the next one that passes. Persists across a whole streak of edit turns — a real fix episode often takes several edits to turn a failing test green. */
+  pendingVerifyFailure: boolean;
+  /** Set for exactly one turn after a review-phase turn — a one-shot flag, since there's no "review passed" signal to bound it the way a passing verify bounds `pendingVerifyFailure`. */
+  pendingReviewFlag: boolean;
+  /** Files touched by an edit toolcall anywhere earlier in this run — a re-edit of one of these is rework. */
+  reworkedFiles: Set<string>;
+}
+
+function editedFilesOf(turn: AdapterTurn): string[] {
+  const files: string[] = [];
+  for (const toolcall of turn.toolcalls) {
+    if (toolcall.isEdit && toolcall.file !== undefined) files.push(toolcall.file);
+  }
+  return files;
+}
+
+/**
+ * Reclassifies a would-be `implementation` turn to `fix` when it's rework in one of three
+ * senses: (a) the run's own agentType follows the `*-fix` convention, (b) a prior verify call
+ * in this run failed and hasn't passed since, or a review-phase turn immediately precedes this
+ * one, or (c) this turn re-touches a file already edited earlier in the run.
+ */
+function reclassifyFix(turn: AdapterTurn, raw: Classified, runIsFixAgent: boolean, state: FixState): Classified {
+  const reviewFlagActive = state.pendingReviewFlag;
+  state.pendingReviewFlag = false; // one-shot: consumed by the very next turn regardless of outcome
+
+  let result = raw;
+  if (raw.phase === 'implementation' && hasEditSignal(turn)) {
+    const isRework = editedFilesOf(turn).some((file) => state.reworkedFiles.has(file));
+    if (runIsFixAgent) {
+      // A deliberate run-level tag — as reliable a signal as any agentType mapping, so keep it "explicit".
+      result = { phase: 'fix', explicit: true };
+    } else if (state.pendingVerifyFailure || reviewFlagActive || isRework) {
+      // State-derived from run history, not a literal tag on this turn — treat as a weak signal for hysteresis.
+      result = { phase: 'fix', explicit: false };
     }
+  }
+
+  if (turn.hadVerify) state.pendingVerifyFailure = turn.verifyFailed;
+  if (raw.phase === 'review') state.pendingReviewFlag = true;
+  for (const file of editedFilesOf(turn)) state.reworkedFiles.add(file);
+
+  return result;
+}
+
+/** First turn of each contiguous `fix`-phase block is a fix episode's start. */
+function markFixEpisodeStarts(turns: Turn[]): void {
+  let previousBlockId: string | undefined;
+  for (const turn of turns) {
+    if (turn.phase === 'fix' && turn.blockId !== previousBlockId) turn.isFixEpisodeStart = true;
+    previousBlockId = turn.blockId;
+  }
+}
+
+/**
+ * Deterministic 7-phase inference: per-turn signal priority (skill > agentType > tool-mix >
+ * default), an impl-vs-fix rework pass, then block assignment with hysteresis (see
+ * `phase/blocks.ts`) and fix-episode marking.
+ */
+export function inferPhases(run: AdapterRun): Turn[] {
+  const runIsFixAgent = isFixAgentType(run.agentType);
+  const state: FixState = { pendingVerifyFailure: false, pendingReviewFlag: false, reworkedFiles: new Set() };
+
+  const classifications = run.turns.map((adapterTurn) => {
+    const raw = classifyTurn(adapterTurn, run);
+    return reclassifyFix(adapterTurn, raw, runIsFixAgent, state);
+  });
+
+  const signals: PhaseSignal[] = classifications.map((c) => ({ phase: c.phase, explicit: c.explicit }));
+  const blocks = assignBlocks(run.runKey, signals);
+
+  const turns: Turn[] = run.turns.map((adapterTurn, i) => {
+    const block = blocks[i];
+    const phase: Phase = block?.phase ?? 'planning';
+    const blockId = block?.blockId ?? `${run.runKey}#0`;
 
     const turn: Turn = {
       id: `${run.runKey}:${adapterTurn.idx}`,
@@ -34,14 +114,15 @@ export function inferPhases(run: AdapterRun): Turn[] {
       tEnd: adapterTurn.tEnd,
       tokens: adapterTurn.tokens,
       phase,
-      blockId: `${run.runKey}:block-${blockStartIdx}`,
+      blockId,
       isFixEpisodeStart: false,
     };
     if (adapterTurn.durationMs !== undefined) turn.durationMs = adapterTurn.durationMs;
     if (adapterTurn.model !== undefined) turn.model = adapterTurn.model;
     if (adapterTurn.skill !== undefined) turn.skill = adapterTurn.skill;
-    turns.push(turn);
-  }
+    return turn;
+  });
 
+  markFixEpisodeStarts(turns);
   return turns;
 }

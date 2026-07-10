@@ -3,6 +3,7 @@ import type { Adapter } from '../../core/types.js';
 import { openStore } from '../../core/store/open.js';
 import { ingest, type IngestOptions } from '../../core/ingest/pipeline.js';
 import { ClaudeCodeAdapter } from '../../adapter/claude-code/index.js';
+import { formatPhaseDiagnostics, phaseDiagnostics } from '../../core/phase/diag.js';
 
 export async function runIngest(argv: string[]): Promise<void> {
   const { values } = parseArgs({
@@ -11,6 +12,8 @@ export async function runIngest(argv: string[]): Promise<void> {
       all: { type: 'boolean', default: false },
       session: { type: 'string', multiple: true },
       tool: { type: 'string', default: 'cc' },
+      // Internal/dev-only diagnostic, deliberately not documented in `aistats --help`.
+      'phase-diag': { type: 'boolean', default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -34,6 +37,12 @@ export async function runIngest(argv: string[]): Promise<void> {
         `(subagents linked=${summary.subagentRunsAdded}) turns added=${summary.turnsAdded} ` +
         `toolcalls added=${summary.toolcallsAdded} elapsed=${summary.elapsedMs}ms`,
     );
+
+    if (values['phase-diag'] === true) {
+      const diag = await phaseDiagnostics(store);
+      console.log('');
+      console.log(formatPhaseDiagnostics(diag));
+    }
   } finally {
     await store.close();
   }
