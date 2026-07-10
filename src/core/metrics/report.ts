@@ -1,4 +1,5 @@
 import type { Phase, TokenTotals, ToolName } from '../types.js';
+import type { Recommendation } from '../recommend/types.js';
 
 export interface PhaseStat {
   phase: Phase;
@@ -109,5 +110,5 @@ export interface Report {
   counts: Counts;
   ratios: Ratios;
   timeline: DayBucket[];
-  recommendations: unknown[];
+  recommendations: Recommendation[];
 }

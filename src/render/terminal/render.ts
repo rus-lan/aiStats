@@ -1,5 +1,5 @@
 import type { Phase } from '../../core/types.js';
-import type { Ratios, Report } from '../report-model.js';
+import type { Ratios, Recommendation, Report } from '../report-model.js';
 import { bar } from './bars.js';
 import { sparkline } from './spark.js';
 import { bold, color, type ColorName, dim } from './color.js';
@@ -355,18 +355,43 @@ function renderByTool(report: Report): string[] {
   return lines;
 }
 
-// --- recommendations (rule-engine text lands in P8; placeholder for now) -----------------------------
+// --- recommendations (P8 rule-engine) ------------------------------------------------------------
 
-function renderRecommendations(report: Report): string[] {
+const RECOMMENDATIONS_TOP_N = 3;
+
+const SEVERITY_COLOR: Record<Recommendation['severity'], ColorName> = {
+  high: 'red',
+  medium: 'yellow',
+  low: 'gray',
+};
+
+function renderRecommendationBlock(rec: Recommendation, index: number): string[] {
+  const c = color(SEVERITY_COLOR[rec.severity]);
+  const lines = [`${bold(`${index + 1}. ${rec.title}`)} ${c(`[${rec.severity}]`)}`, `   ${rec.detail}`];
+  for (const item of rec.evidence) {
+    lines.push(dim(`   · ${item.label}: ${item.value}`));
+  }
+  lines.push(`   → ${rec.suggestion}`);
+  return lines;
+}
+
+function renderRecommendations(report: Report, full: boolean): string[] {
   const lines = sectionTitle('Recommendations');
   if (report.recommendations.length === 0) {
-    lines.push(dim('(recommendations: run P8)'));
+    lines.push(dim('no efficiency flags — metrics look healthy'));
     return lines;
   }
-  report.recommendations.forEach((rec, i) => {
-    const text = typeof rec === 'string' ? rec : JSON.stringify(rec);
-    lines.push(`${i + 1}. ${text}`);
+
+  const items = full ? report.recommendations : report.recommendations.slice(0, RECOMMENDATIONS_TOP_N);
+  items.forEach((rec, i) => {
+    if (i > 0) lines.push('');
+    lines.push(...renderRecommendationBlock(rec, i));
   });
+
+  if (!full && report.recommendations.length > RECOMMENDATIONS_TOP_N) {
+    lines.push('');
+    lines.push(dim(`… ${report.recommendations.length - RECOMMENDATIONS_TOP_N} more (--full to show all)`));
+  }
   return lines;
 }
 
@@ -386,7 +411,7 @@ export function renderReport(report: Report, opts: RenderOptions): string {
 
   if (report.scope.kind === 'global') sections.push(renderProjects(report, opts.full));
   if (report.byTool.length > 1) sections.push(renderByTool(report));
-  sections.push(renderRecommendations(report));
+  sections.push(renderRecommendations(report, opts.full));
 
   return `${sections.map((lines) => lines.join('\n')).join('\n\n')}\n`;
 }

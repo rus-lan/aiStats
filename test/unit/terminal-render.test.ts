@@ -96,8 +96,17 @@ void test('renderReport (NO_COLOR) renders every section with no leaked NaN/unde
   assert.match(output, /\bcc\b/);
   assert.match(output, /opencode/);
 
-  // recommendations placeholder (P8 not implemented yet; fixture has none)
-  assert.match(output, /\(recommendations: run P8\)/);
+  // recommendations (P8): top-3 rendered by default, with evidence lines and a suggestion
+  assert.match(output, /RECOMMENDATIONS/);
+  assert.match(output, /Fixes are eating a large share of implementation time/);
+  assert.match(output, /\[high\]/);
+  assert.match(output, /fix time: 1h 30m/);
+  assert.match(output, /Strengthen review and tests before implementing/);
+  assert.ok(
+    !output.includes('Context cache is barely being reused'),
+    'the 4th (lowest-impact) recommendation is excluded from the default top-3 view',
+  );
+  assert.match(output, /… 1 more \(--full to show all\)/);
 
   // never leak a raw NaN/undefined token into the rendered text
   assert.ok(!/\bNaN\b/.test(output), 'no NaN literal should ever leak into the render');
@@ -118,6 +127,10 @@ void test('--full expands every top-N table instead of truncating', () => {
   // project: 12 entries, default top-10 excludes the last two
   assert.ok(!trimmed.includes('internal-tools'), 'default view excludes projects beyond the top 10');
   assert.ok(full.includes('internal-tools'), '--full includes every project');
+
+  // recommendations: 4 entries, default top-3 excludes the lowest-impact one
+  assert.ok(!trimmed.includes('Context cache is barely being reused'), 'default view excludes the 4th recommendation');
+  assert.ok(full.includes('Context cache is barely being reused'), '--full includes every recommendation');
 });
 
 void test('color is emitted when forced on, and fully stripped under NO_COLOR', () => {
@@ -133,4 +146,10 @@ void test('renderReport is deterministic for a fixed Report input (stripAnsi-nor
   const first = stripAnsi(renderPlain(false));
   const second = stripAnsi(renderPlain(false));
   assert.equal(first, second);
+});
+
+void test('renderReport prints a healthy one-liner when no recommendations fired', () => {
+  const healthyReport: Report = { ...sampleReport, recommendations: [] };
+  const output = withEnv({ NO_COLOR: '1', FORCE_COLOR: undefined }, () => renderReport(healthyReport, { full: false }));
+  assert.match(output, /no efficiency flags — metrics look healthy/);
 });

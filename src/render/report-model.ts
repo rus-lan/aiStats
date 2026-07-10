@@ -11,3 +11,4 @@ export type {
   ReportScope,
   ToolStat,
 } from '../core/metrics/report.js';
+export type { Recommendation, RecommendationEvidence, Severity } from '../core/recommend/types.js';

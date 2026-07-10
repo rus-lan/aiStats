@@ -697,5 +697,54 @@
       }
     }
   ],
-  "recommendations": []
+  "recommendations": [
+    {
+      "id": "high-fix-ratio",
+      "title": "Fixes are eating a large share of implementation time",
+      "detail": "Fix-phase time is 167% of implementation time — fixing already-written code costs almost as much as writing it in the first place.",
+      "severity": "high",
+      "impactScore": 4500000,
+      "evidence": [
+        { "label": "fix time", "value": "1h 30m" },
+        { "label": "implementation time", "value": "4h" },
+        { "label": "fix/impl ratio", "value": "167%" }
+      ],
+      "suggestion": "Strengthen review and tests before implementing — a tests-first approach catches bugs before they reach the fix phase."
+    },
+    {
+      "id": "research-heavy-slow-start",
+      "title": "Too much time spent before writing code",
+      "detail": "Research time is 32% of implementation time and it takes 6m 10s on average before the first edit lands.",
+      "severity": "medium",
+      "impactScore": 1200000,
+      "evidence": [
+        { "label": "research time", "value": "45m" },
+        { "label": "avg time-to-first-edit", "value": "6m 10s" }
+      ],
+      "suggestion": "Timebox research and cache docs/context so exploration does not crowd out implementation time."
+    },
+    {
+      "id": "low-parallelism",
+      "title": "Subagents are barely running in parallel with the orchestrator",
+      "detail": "Subagent wall time is only 12% of orchestrator wall time — most independent work is still happening serially in the main loop.",
+      "severity": "medium",
+      "impactScore": 800000,
+      "evidence": [
+        { "label": "subagent parallelism", "value": "12.0%" },
+        { "label": "orchestrator wall time", "value": "2h" }
+      ],
+      "suggestion": "Fan independent work out to parallel subagents instead of doing it serially in the main loop."
+    },
+    {
+      "id": "low-cache-hit",
+      "title": "Context cache is barely being reused",
+      "detail": "Only 40% of input tokens hit the prompt cache — resetting or compacting context often throws away reusable cache.",
+      "severity": "low",
+      "impactScore": 50000,
+      "evidence": [
+        { "label": "cache-hit ratio", "value": "40.0%" }
+      ],
+      "suggestion": "Compact or reset context less often, and keep related work in one continuous session so the cache stays warm."
+    }
+  ]
 }

@@ -4,6 +4,8 @@ import { projectKey as resolveProjectKey } from '../util/git.js';
 import { byActor, byDay, byModel, byPhase, byProject, byTool, computeActiveDurations, sumCostUsd, sumDurationMs, sumTokens, sumWallMs } from './slices.js';
 import { computeCounts, computeRatios } from './ratios.js';
 import type { Report, ReportScope } from './report.js';
+import { recommend } from '../recommend/engine.js';
+import { loadThresholds } from '../recommend/thresholds.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -81,7 +83,7 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
   };
   if (totalCostUsd !== undefined) totals.costUsd = totalCostUsd;
 
-  return {
+  const report: Report = {
     scope,
     generatedAtMs,
     totals,
@@ -95,4 +97,6 @@ export async function buildReport(store: Store, options: BuildReportOptions): Pr
     timeline: byDay(turns, adjustedByTurnId),
     recommendations: [],
   };
+  report.recommendations = recommend(report, data, loadThresholds());
+  return report;
 }
