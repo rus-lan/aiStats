@@ -22,7 +22,7 @@ Re-run the same one-liner any time to upgrade in place.
 Pin a version or change where it lands:
 
 ```sh
-AISTATS_VERSION=0.3.0 sh install.sh     # a specific release instead of latest
+AISTATS_VERSION=0.3.0 sh install.sh     # a specific release instead of latest, v0.3.0 and up
 AISTATS_LIB=/opt/lib/aistats sh install.sh
 AISTATS_BIN=/opt/bin sh install.sh
 AISTATS_HOME=/data/aistats sh install.sh   # data dir, same override the CLI reads
