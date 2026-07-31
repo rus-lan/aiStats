@@ -5,3 +5,4 @@ dist/
 screenshots/
 .playwright-mcp/
 *.tgz
+checksums-sha256.txt

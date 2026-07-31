@@ -168,17 +168,22 @@ TypeScript на Node 22, strict, без нативных зависимосте�
 ## 17. Дистрибуция и установка (`curl | sh`)
 
 - **Репозиторий**: `git@github.com:rus-lan/aiStats.git` (public), remote `origin`.
-- **Артефакт релиза**: prebuilt тарбол `aistats-<version>.tgz` = `dist/` + `bin/` + `package.json` (без `src/`, без `node_modules` — нативных/рантайм-зависимостей нет). Прикладывается к GitHub Release с тегом `vX.Y.Z`.
-- **Инсталлятор**: `install.sh` в корне репо, отдаётся как `https://raw.githubusercontent.com/rus-lan/aiStats/<default-branch>/install.sh`. Ставит только CLI, не трогает `~/.claude`/`~/.config/opencode`.
-- **Одна строка**: `curl -fsSL https://raw.githubusercontent.com/rus-lan/aiStats/main/install.sh | sh`
+- **Ассеты релиза** (тег `vX.Y.Z`, имена без версии — иначе не работает путь `releases/latest/download/<asset>`):
+  - `aistats.tgz` — prebuilt тарбол = `dist/` + `bin/` + `src/integration` + `package.json` (без `node_modules` — нативных/рантайм-зависимостей нет).
+  - `checksums-sha256.txt` — sha256 от `aistats.tgz` и `install.sh`.
+  - `install.sh` — сам инсталлятор, чтобы одна строка тянула его из релиза, а не из ветки.
+- **Одна строка**: `curl -fsSL https://github.com/rus-lan/aiStats/releases/latest/download/install.sh | sh`
+- **Инсталлятор**: `install.sh` в корне репо — источник правды, публикуется как ассет каждого релиза. Ставит только CLI, не трогает `~/.claude`/`~/.config/opencode`.
 - **Что делает install.sh** (POSIX sh; Linux/macOS):
-  1. Проверка `node` есть и `>=22` (парс `node -v`); иначе — понятная ошибка и выход.
-  2. Узнать последний релиз через GitHub API (`/repos/rus-lan/aiStats/releases/latest`), скачать тарбол-ассет. Override: `AISTATS_VERSION` (пин версии) / `AISTATS_TARBALL` (прямой URL или локальный файл — для тестов и офлайна).
-  3. Установить в `~/.local/lib/aistats` (снести прошлую копию, распаковать `dist+bin+package.json`).
-  4. Симлинк `~/.local/lib/aistats/bin/aistats.js` → `~/.local/bin/aistats`, `chmod +x`.
-  5. `mkdir -p ~/.aistats && chmod 700 ~/.aistats`.
-  6. Если `~/.local/bin` не в `$PATH` — предупредить и показать строку `export`.
-  7. Подсказать следующий шаг: `aistats install --claude-code` (затем `/config-apply`) и `aistats install --opencode`.
+  1. Проверка `node` есть и `>=22` (парс `node -v`); иначе — понятная ошибка и выход. Плюс наличие `curl` и `tar`.
+  2. Резолв релиза без GitHub API: один redirect-пробник `curl --no-location` по `releases/latest/download/aistats.tgz` даёт конкретный тег; дальше и тарбол, и чексуммы качаются с одного и того же `releases/download/<tag>/` — гонка «latest сменился между двумя запросами» невозможна. Anonymous rate limit (60/час) не задействован вовсе. Override: `AISTATS_VERSION` (пин версии) / `AISTATS_TARBALL` (прямой URL или локальный файл — для тестов и офлайна, чексумма при нём не проверяется).
+  3. Сверка sha256 тарбола с `checksums-sha256.txt` из того же релиза. Отсутствие `sha256sum`/`shasum`, недоступный файл чексумм или отсутствие в нём записи — фатальны; `AISTATS_SKIP_CHECKSUM=1` понижает эти три случая до предупреждения. Реальное расхождение хешей фатально всегда.
+  4. Распаковка в `$LIB.new`, проверка `bin/aistats.js`, затем атомарная замена `~/.local/lib/aistats` — сорванная закачка не оставляет полуустановленный каталог.
+  5. Симлинк `~/.local/lib/aistats/bin/aistats.js` → `~/.local/bin/aistats`, `chmod +x`.
+  6. `mkdir -p ~/.aistats && chmod 700 ~/.aistats`.
+  7. Если `~/.local/bin` не в `$PATH` — предупредить и показать строку `export` для rc-файла текущей оболочки.
+  8. Напечатать установленную версию и подсказать следующий шаг: `aistats ingest --all`, `aistats report`, `aistats install --all` (затем `/config-apply`).
+- **Каталоги**: `AISTATS_LIB` / `AISTATS_BIN` / `AISTATS_HOME` переопределяют lib-, bin- и data-каталог.
 - **Обновление**: повторный запуск той же строки — идемпотентно заменяет `~/.local/lib/aistats`.
 - **Удаление**: `install.sh --uninstall` (снять symlink + `~/.local/lib/aistats`; данные `~/.aistats` не трогать без `--purge`).
-- **Сборка релиза (dev-сторона)**: `npm run build` (tsc → `dist/`) → `scripts/release.sh` тарит `dist bin package.json`, ставит тег `vX.Y.Z`, `gh release create`. Windows вне scope `curl|sh`.
+- **Сборка релиза (dev-сторона)**: `scripts/release.sh` — dry run по умолчанию (check → `npm run build` → `npm pack` → `aistats.tgz` → `checksums-sha256.txt`), `--publish` тегает, пушит тег и создаёт релиз с тремя ассетами. Публикация идёт через `gh`, а при его отсутствии — через GitHub REST API с `GITHUB_TOKEN` (scope `repo`). `--publish` отказывает на грязном рабочем дереве, на уже существующем теге (локально или на `origin`) и на незапушенном `HEAD`. Windows вне scope `curl|sh`.

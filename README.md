@@ -7,13 +7,49 @@ where time and tokens actually go.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rus-lan/aiStats/main/install.sh | sh
+curl -fsSL https://github.com/rus-lan/aiStats/releases/latest/download/install.sh | sh
 ```
 
-Requires Node.js >= 22. Installs to `~/.local/lib/aistats` with a symlink at
-`~/.local/bin/aistats`. Re-run the same line any time to upgrade in place.
+Requires Node.js >= 22. The script resolves the latest release from a single
+redirect on `releases/latest/download/` — it never calls the GitHub REST API, so
+the anonymous 60-requests/hour rate limit cannot break an install. It downloads
+`aistats.tgz`, checks it against `checksums-sha256.txt` from the same release,
+unpacks it to `~/.local/lib/aistats` and symlinks `~/.local/bin/aistats`. If that
+directory is not on your `PATH`, the script prints the line to add.
+
+Re-run the same one-liner any time to upgrade in place.
+
+Pin a version or change where it lands:
+
+```sh
+AISTATS_VERSION=0.3.0 sh install.sh     # a specific release instead of latest
+AISTATS_LIB=/opt/lib/aistats sh install.sh
+AISTATS_BIN=/opt/bin sh install.sh
+AISTATS_HOME=/data/aistats sh install.sh   # data dir, same override the CLI reads
+```
+
+Checksum verification is mandatory: a missing `sha256sum`/`shasum`, a failed
+`checksums-sha256.txt` download, or a missing entry for `aistats.tgz` all abort
+the install. Override that on minimal systems with:
+
+```sh
+AISTATS_SKIP_CHECKSUM=1 sh install.sh
+```
+
+An actual checksum mismatch is always fatal, regardless of that variable.
+
 Uninstall with `sh install.sh --uninstall` (add `--purge` to also delete
 `~/.aistats` data).
+
+### From source
+
+```sh
+git clone https://github.com/rus-lan/aiStats.git
+cd aiStats
+npm install
+npm run build      # tsc -> dist/
+node bin/aistats.js --version
+```
 
 ## Quick start
 
@@ -47,3 +83,29 @@ usage. A rule-engine turns the resulting shape into concrete recommendations
 
 See [DESIGN.md](./DESIGN.md) for the full data model, phase definitions, and
 architecture.
+
+## Releasing
+
+```sh
+sh scripts/release.sh              # dry run: check, build, pack, hash, print the plan
+sh scripts/release.sh --publish    # tag, push the tag, create the release, upload assets
+```
+
+Bump `version` in `package.json` and commit before publishing — the script reads
+the version from there and refuses a tag that already exists locally or on
+`origin`. `--publish` also refuses a dirty working tree or a `HEAD` that has not
+been pushed. `--no-check` skips the typecheck/lint/test gate; the build still runs.
+
+Every release carries three assets, all under the tag `vX.Y.Z`:
+
+| Asset | Purpose |
+| --- | --- |
+| `aistats.tgz` | the CLI payload (`dist/`, `bin/`, `src/integration`, `package.json`) |
+| `checksums-sha256.txt` | sha256 of `aistats.tgz` and `install.sh` |
+| `install.sh` | the installer the one-liner fetches |
+
+The asset names carry no version — that is what makes the unauthenticated
+`releases/latest/download/<asset>` path work.
+
+Publishing needs either the `gh` CLI or `GITHUB_TOKEN` with `repo` scope; the
+script uses `gh` when present and falls back to the GitHub REST API otherwise.

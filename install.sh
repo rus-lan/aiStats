@@ -1,14 +1,24 @@
-#!/bin/sh
+#!/usr/bin/env sh
 # aiStats installer. POSIX sh, no bashisms, must run under `sh` on Linux and macOS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/rus-lan/aiStats/main/install.sh | sh
+# The installer itself is published as a release asset, so the one-liner is:
 #
-# Env overrides (mainly for local testing, never touch these on a real machine):
-#   AISTATS_TARBALL   local path or URL to an aistats-<version>.tgz, skips GitHub entirely
-#   AISTATS_VERSION   pin a released version (e.g. 0.3.0), skips the /releases/latest lookup
-#   AISTATS_LIB       install dir, default $HOME/.local/lib/aistats
-#   AISTATS_BIN       symlink dir, default $HOME/.local/bin
-#   AISTATS_HOME      data dir, default $HOME/.aistats (same override the aistats CLI itself uses)
+#   curl -fsSL https://github.com/rus-lan/aiStats/releases/latest/download/install.sh | sh
+#
+# "latest" is resolved to one concrete tag with a single redirect probe against
+# GitHub's release-download URL, then the tarball and its checksums are both
+# downloaded from that pinned releases/download/<tag>/ path. The GitHub REST API
+# is never touched, so the anonymous 60-requests/hour rate limit cannot break an
+# install, and the tarball can never disagree with the checksum file it is
+# verified against.
+#
+# Env overrides:
+#   AISTATS_VERSION         pin a released version (e.g. 0.3.0) instead of latest
+#   AISTATS_LIB             install dir, default $HOME/.local/lib/aistats
+#   AISTATS_BIN             symlink dir, default $HOME/.local/bin
+#   AISTATS_HOME            data dir, default $HOME/.aistats (same override the aistats CLI uses)
+#   AISTATS_SKIP_CHECKSUM=1 install even when the download cannot be verified
+#   AISTATS_TARBALL         local path or URL to a tarball, skips GitHub entirely (local testing)
 #
 # Usage:
 #   sh install.sh                installs / upgrades in place
@@ -17,7 +27,11 @@
 
 set -eu
 
-REPO="rus-lan/aiStats"
+OWNER="rus-lan"
+REPO="aiStats"
+ASSET="aistats.tgz"
+CHECKSUMS="checksums-sha256.txt"
+
 LIB="${AISTATS_LIB:-$HOME/.local/lib/aistats}"
 BIN="${AISTATS_BIN:-$HOME/.local/bin}"
 DATA_DIR="${AISTATS_HOME:-$HOME/.aistats}"
@@ -62,7 +76,7 @@ if [ "$do_purge" -eq 1 ]; then
   exit 1
 fi
 
-# --- 1. node >= 22 -----------------------------------------------------------
+# --- 1. prerequisites ---------------------------------------------------------
 
 if ! command -v node >/dev/null 2>&1; then
   err "node not found on PATH."
@@ -94,16 +108,22 @@ if ! command -v tar >/dev/null 2>&1; then
 fi
 
 tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
+cleanup() { rm -rf "$tmpdir" "$LIB.new"; }
+trap cleanup EXIT
+trap 'cleanup; exit 129' HUP
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 131' QUIT
+trap 'cleanup; exit 143' TERM
 
-# --- 2. resolve the tarball ---------------------------------------------------
+# --- 2. resolve the release and download the tarball --------------------------
 
 tarball=""
+base_url=""
 
 if [ -n "${AISTATS_TARBALL:-}" ]; then
   case "$AISTATS_TARBALL" in
     http://*|https://*)
-      tarball="$tmpdir/aistats-local.tgz"
+      tarball="$tmpdir/$ASSET"
       info "aistats: downloading AISTATS_TARBALL=$AISTATS_TARBALL"
       if ! curl -fsSL -o "$tarball" "$AISTATS_TARBALL"; then
         err "failed to download AISTATS_TARBALL: $AISTATS_TARBALL"
@@ -118,50 +138,115 @@ if [ -n "${AISTATS_TARBALL:-}" ]; then
       tarball="$AISTATS_TARBALL"
       ;;
   esac
+  info "aistats: using AISTATS_TARBALL, skipping checksum verification."
 else
   if [ -n "${AISTATS_VERSION:-}" ]; then
-    version="$AISTATS_VERSION"
+    tag="v${AISTATS_VERSION#v}"
+    info "aistats: installing pinned version $tag"
   else
-    api_url="https://api.github.com/repos/$REPO/releases/latest"
-    json=$(curl -fsSL "$api_url" 2>/dev/null) || {
-      err "failed to reach GitHub API ($api_url)."
-      err "This can happen on flaky networks or when the anonymous GitHub API rate limit (60/hour) is hit."
-      err "Work around it with AISTATS_VERSION=<x.y.z> or AISTATS_TARBALL=<path-or-url>."
-      exit 1
-    }
-    tag=$(printf '%s' "$json" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed -E 's/.*"([^"]*)"$/\1/')
-    if [ -z "$tag" ]; then
-      err "could not find a published release for $REPO (or failed to parse the GitHub API response)."
-      err "Work around it with AISTATS_VERSION=<x.y.z> or AISTATS_TARBALL=<path-or-url>."
+    info "aistats: resolving latest release..."
+    probe_url="https://github.com/$OWNER/$REPO/releases/latest/download/$ASSET"
+    if ! redirect_url=$(curl -fsS --no-location -o /dev/null -w '%{redirect_url}' "$probe_url"); then
+      err "could not resolve the latest release from GitHub (network error or HTTP failure — see curl's message above)."
+      err "  probed: $probe_url"
+      err "Pin a known version instead: AISTATS_VERSION=<x.y.z> sh install.sh"
       exit 1
     fi
-    version=$(printf '%s' "$tag" | sed -e 's/^v//')
+    if [ -z "$redirect_url" ]; then
+      err "GitHub did not redirect while resolving the latest release — no release may exist yet."
+      err "  probed: $probe_url"
+      exit 1
+    fi
+    tag=$(printf '%s' "$redirect_url" | sed -n 's#.*/releases/download/\(v[^/]*\)/.*#\1#p')
+    if [ -z "$tag" ]; then
+      err "could not parse a release tag from GitHub's redirect."
+      err "  redirect target: $redirect_url"
+      exit 1
+    fi
+    info "aistats: resolved latest release to $tag"
   fi
 
-  asset="aistats-$version.tgz"
-  url="https://github.com/$REPO/releases/download/v$version/$asset"
-  tarball="$tmpdir/$asset"
-  info "aistats: downloading $url"
-  if ! curl -fsSL -o "$tarball" "$url"; then
-    err "failed to download release asset: $url"
-    err "Check the network, or pin a known-good release with AISTATS_VERSION=<x.y.z>, or pass a local file with AISTATS_TARBALL=<path>."
+  base_url="https://github.com/$OWNER/$REPO/releases/download/$tag"
+  tarball="$tmpdir/$ASSET"
+  info "aistats: downloading $base_url/$ASSET"
+  if ! curl -fsSL -o "$tarball" "$base_url/$ASSET"; then
+    err "failed to download release asset: $base_url/$ASSET"
+    err "Check that release $tag exists and ships $ASSET:"
+    err "  https://github.com/$OWNER/$REPO/releases/tag/$tag"
     exit 1
   fi
 fi
 
-# --- 3. install ---------------------------------------------------------------
+# --- 3. verify the download ---------------------------------------------------
+#
+# Verification is mandatory whenever the tarball came from a release: a missing
+# sha256 tool, a failed checksums download, or a missing entry for the asset all
+# hard-fail. AISTATS_SKIP_CHECKSUM=1 downgrades those three to a warning. An
+# actual mismatch is always fatal, regardless of that variable.
 
-rm -rf "$LIB"
-mkdir -p "$LIB"
-# npm pack wraps everything in a top-level "package/" dir; drop it so $LIB/bin,
-# $LIB/dist, $LIB/src/integration sit directly under $LIB.
-tar -xzf "$tarball" -C "$LIB" --strip-components=1
+if [ -n "$base_url" ]; then
+  sha_cmd=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha_cmd="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    sha_cmd="shasum -a 256"
+  fi
 
-if [ ! -f "$LIB/bin/aistats.js" ]; then
-  err "extracted tarball but $LIB/bin/aistats.js is missing; the release artifact looks broken."
+  skip_reason=""
+  if [ -z "$sha_cmd" ]; then
+    skip_reason="neither sha256sum nor shasum is available"
+  else
+    checksums_file="$tmpdir/$CHECKSUMS"
+    if ! curl -fsSL -o "$checksums_file" "$base_url/$CHECKSUMS"; then
+      skip_reason="could not download $CHECKSUMS"
+    else
+      expected=$(grep -E "  $ASSET\$" "$checksums_file" | awk '{print $1}' | head -n 1)
+      if [ -z "$expected" ]; then
+        skip_reason="no checksum entry for '$ASSET' in $CHECKSUMS"
+      else
+        actual=$($sha_cmd "$tarball" | awk '{print $1}')
+        if [ "$expected" != "$actual" ]; then
+          err "checksum mismatch for $ASSET — aborting install."
+          err "  expected: $expected"
+          err "  actual:   $actual"
+          exit 1
+        fi
+        info "aistats: checksum verified ($ASSET)"
+      fi
+    fi
+  fi
+
+  if [ -n "$skip_reason" ]; then
+    if [ "${AISTATS_SKIP_CHECKSUM:-}" = "1" ]; then
+      err "WARNING: $skip_reason — installing without integrity check."
+    else
+      err "$skip_reason — cannot verify the download."
+      err "  set AISTATS_SKIP_CHECKSUM=1 to install anyway without verification."
+      exit 1
+    fi
+  fi
+fi
+
+# --- 4. install ---------------------------------------------------------------
+#
+# Unpack into $LIB.new first and swap only once the payload looks sane, so a
+# broken download never leaves a half-installed $LIB behind.
+
+rm -rf "$LIB.new"
+mkdir -p "$LIB.new"
+# npm pack wraps everything in a top-level "package/" dir; drop it so bin/, dist/
+# and src/integration sit directly under $LIB.
+tar -xzf "$tarball" -C "$LIB.new" --strip-components=1
+
+if [ ! -f "$LIB.new/bin/aistats.js" ]; then
+  err "extracted tarball but bin/aistats.js is missing; the release artifact looks broken."
   exit 1
 fi
-chmod +x "$LIB/bin/aistats.js"
+chmod +x "$LIB.new/bin/aistats.js"
+
+rm -rf "$LIB"
+mkdir -p "$(dirname "$LIB")"
+mv "$LIB.new" "$LIB"
 
 mkdir -p "$BIN"
 ln -sf "$LIB/bin/aistats.js" "$BIN/aistats"
@@ -169,7 +254,7 @@ ln -sf "$LIB/bin/aistats.js" "$BIN/aistats"
 mkdir -p "$DATA_DIR"
 chmod 700 "$DATA_DIR"
 
-# --- 4. PATH check -------------------------------------------------------------
+# --- 5. PATH check ------------------------------------------------------------
 
 path_ok=0
 case ":$PATH:" in
@@ -179,20 +264,27 @@ esac
 if [ "$path_ok" -eq 0 ]; then
   info ""
   info "Warning: $BIN is not on your PATH."
-  info "Add it to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
+  shell_name=$(basename "${SHELL:-sh}")
+  case "$shell_name" in
+    bash) rc="$HOME/.bashrc" ;;
+    zsh)  rc="$HOME/.zshrc" ;;
+    fish) rc="$HOME/.config/fish/config.fish" ;;
+    *)    rc="your shell profile" ;;
+  esac
+  info "Add this line to $rc:"
   info ""
   info "  export PATH=\"$BIN:\$PATH\""
   info ""
 fi
 
-# --- 5. done ---------------------------------------------------------------
+# --- 6. done ------------------------------------------------------------------
 
 info "aistats installed: $LIB"
 info "  binary: $BIN/aistats -> $LIB/bin/aistats.js"
 info "  data:   $DATA_DIR"
+node "$LIB/bin/aistats.js" --version 2>/dev/null || true
 info ""
 info "Next steps:"
-info "  aistats --version"
 info "  aistats ingest --all"
 info "  aistats report"
 info "  aistats install --all      # wire up live capture (Claude Code hooks + Opencode plugin)"
